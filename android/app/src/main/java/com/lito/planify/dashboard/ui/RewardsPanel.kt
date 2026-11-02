@@ -207,9 +207,9 @@ fun PinOverlay(title: String, tint: Color, key: String, busy: Boolean, error: St
 private const val PIN_LENGTH = 4
 
 /**
- * «¿Dónde guardas tu estrella?»: las recompensas de [kid] con su hucha. Cada toque en una con sitio guarda una estrella
- * ([onSave] con la recompensa). Quien lo muestra lo cierra cuando ya no le quedan libres; también «Luego» o tocar fuera
- * (las estrellas se quedan por guardar).
+ * «¿Dónde guardas tu estrella?»: las recompensas de [kid] con su hucha de TaskMate. Cada toque en una con sitio mete una
+ * estrella ([onSave] con la recompensa); ya no se puede sacar. Quien lo muestra lo cierra cuando ya no le quedan
+ * sueltas; también «Luego» o tocar fuera (se quedan sueltas).
  */
 @Composable
 fun StarPicker(kid: Kid, rewards: List<Reward>, busy: Boolean, error: String?, onSave: (String) -> Unit, onDismiss: () -> Unit) {
@@ -236,7 +236,7 @@ fun StarPicker(kid: Kid, rewards: List<Reward>, busy: Boolean, error: String?, o
                 textAlign = TextAlign.Center
             )
             Text(
-                if (kid.libres == 1) "Toca la recompensa para la que quieres ahorrar" else "Cada toque guarda una estrella en esa hucha",
+                if (kid.libres == 1) "Toca la recompensa para la que ahorras: ya no se puede cambiar" else "Cada toque guarda una estrella en esa hucha (ya no se puede cambiar)",
                 style = Type.Small.copy(color = Palette.InkMuted),
                 textAlign = TextAlign.Center
             )

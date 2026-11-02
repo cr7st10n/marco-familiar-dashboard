@@ -14,8 +14,6 @@ LoadCredential=familia.json:/srv/familia/marco/config/familia.json
 # %d = directorio de credenciales (familia.py también lo busca ahí si no hay FAMILIA_CONFIG)
 Environment=FAMILIA_CONFIG=%d/familia.json
 DynamicUser=yes
-# Huchas de recompensas de los niños (huchas.json): lo único que este servicio guarda
-StateDirectory=familia-tareas
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

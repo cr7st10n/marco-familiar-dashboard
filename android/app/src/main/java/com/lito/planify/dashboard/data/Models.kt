@@ -228,8 +228,9 @@ data class Chores(
 }
 
 /**
- * Un niño: `estrellas` acumuladas, las ganadas esta semana y las que puede gastar (sin las de canjes pendientes).
- * `huchas`: las estrellas que ha guardado para cada recompensa (por id); `libres`: las que aún no ha guardado en ninguna.
+ * Un niño: `estrellas` sueltas (fuera de las huchas; negativas si debe), las ganadas esta semana y las que puede gastar
+ * (sin las de canjes pendientes). `huchas`: las que ha metido en la hucha de cada recompensa en TaskMate (por id; ya no
+ * se pueden sacar); `libres`: las sueltas que aún puede guardar.
  */
 data class Kid(
     val id: String,
@@ -282,8 +283,8 @@ data class RewardClaim(
 
 data class RewardClaimRequest(val recompensa: String, val nino: String)
 
-/** Guardar una estrella libre en la hucha de [recompensa]; [hecha], la tarea de la que viene (si se deshace, sale). */
-data class StarSaveRequest(val nino: String, val recompensa: String, val hecha: String? = null)
+/** Meter una estrella suelta en la hucha de [recompensa] (TaskMate). */
+data class StarSaveRequest(val nino: String, val recompensa: String)
 
 data class ShoppingRemoveRequest(val producto: String)
 

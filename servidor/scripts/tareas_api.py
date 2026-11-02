@@ -8,8 +8,7 @@ del marco. Home Assistant no se expone: solo se permiten estas operaciones, las 
   GET  /                                  → {"fecha", "ninos", "tareas", "recompensas", "pedidas"}
   POST /hecha     {"tarea", "nino"}       → la marca como hecha por ese niño; devuelve el estado nuevo
   POST /deshacer  {"hecha"}               → deshace una de hoy (quita las estrellas); devuelve el estado nuevo
-  POST /guardar   {"nino", "recompensa", "hecha"?} → guarda 1 estrella sin guardar en la hucha de esa recompensa
-                                          («hecha»: la tarea de la que viene, para sacarla si se deshace)
+  POST /guardar   {"nino", "recompensa"}  → mete 1 estrella suelta en la hucha de esa recompensa (TaskMate)
   POST /pedir     {"recompensa", "nino"}  → el niño pide el canje (queda pendiente) y se avisa en Todoist; solo con la
                                           hucha de esa recompensa llena
   POST /aprobar   {"pedida", "pin"}       → un padre lo aprueba con el PIN (se descuentan las estrellas)
@@ -23,11 +22,10 @@ del marco. Home Assistant no se expone: solo se permiten estas operaciones, las 
   POST /casa/toldo    {"accion"}          → sacar / recoger / parar (con «invertido», al revés en HA)
   POST /casa/musica   {"accion", "altavoz"} → play / pause / next / previous en un Echo, o «volumen» con "nivel" (0–1)
 
-Huchas: TaskMate solo lleva un monedero de estrellas por niño. Para que cada niño decida para qué recompensa ahorra,
-este servicio guarda aparte (huchas.json en STATE_DIRECTORY o, sin systemd, en «rutas.base») cuántas de sus estrellas
-ha metido en la hucha de cada recompensa. Las que no están en ninguna son «libres» (por guardar). Si TaskMate le quita
-estrellas por otro lado (un canje aprobado fuera del marco, un ajuste de los padres), salen de las huchas que menos
-llevan.
+Huchas: las de TaskMate (allocate_points_to_pool). Cada niño mete sus estrellas sueltas en la hucha de la recompensa
+que quiere; salen de su saldo en ese momento y ya no se pueden sacar (TaskMate no lo permite): al aprobar el canje con
+la hucha llena, se vacía. Las penalizaciones y los deshacer solo pueden quitar del saldo suelto, así que la familia
+tiene activado «allow_negative_balance»: si no le llega, queda a deber (saldo negativo) y lo paga con las siguientes.
 
 El PIN de padres lo comprueba este servicio, no el marco: 5 fallos seguidos (por defecto) lo bloquean 15 minutos.
 Credenciales por LoadCredential de systemd: ha.token (Home Assistant), marco.token (el del marco) y padres.pin; y la
@@ -45,7 +43,6 @@ import time
 import urllib.error
 import urllib.request
 import sys
-import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
@@ -76,8 +73,6 @@ TOLDO_ACCIONES = ({"sacar": "close_cover", "recoger": "open_cover", "parar": "st
 MUSICA_ACCIONES = {"play": "media_play", "pause": "media_pause", "next": "media_next_track", "previous": "media_previous_track"}
 PIN_FALLOS, PIN_BLOQUEO = int(_TAREAS.get("pin_fallos", 5)), int(_TAREAS.get("pin_bloqueo_min", 15)) * 60
 _pin = {"fallos": 0, "hasta": 0.0}
-HUCHAS = os.path.join(os.environ.get("STATE_DIRECTORY") or familia.base(), "huchas.json")
-_huchas_lock = threading.Lock()
 # Colores de cada niño en el marco (TaskMate no los expone en los sensores)
 COLORES = {n["nombre"]: n["color"] for n in CFG.get("ninos", []) if n.get("color")}
 OTROS_COLORES = CFG.get("otros_colores") or ["#8E24AA", "#F4511E", "#00897B", "#FDD835"]
@@ -137,9 +132,11 @@ def estado() -> dict:
     for i, c in enumerate(overview.get("children", [])):
         ninos.append({"id": c["id"], "nombre": c["name"],
                       "color": COLORES.get(c["name"], OTROS_COLORES[i % len(OTROS_COLORES)]),
+                      # Saldo suelto (fuera de las huchas); negativo si debe estrellas
                       "estrellas": c.get("points", 0), "semana": c.get("week_points_earned", 0),
                       # Lo que puede gastar: sus estrellas menos lo apartado en canjes pendientes
-                      "disponibles": c.get("spendable_balance", c.get("points", 0))})
+                      "disponibles": c.get("spendable_balance", c.get("points", 0)),
+                      "libres": max(0, c.get("spendable_balance", c.get("points", 0))), "huchas": {}})
     nombres = {n["id"]: n["nombre"] for n in ninos}
     # Una fila por tarea de hoy: para quién está pendiente y quién la ha hecho
     tareas: dict[str, dict] = {}
@@ -159,7 +156,7 @@ def estado() -> dict:
         hora = datetime.fromisoformat(done["completed_at"]).astimezone(TZ).strftime("%H:%M")
         t["hechas"].append({"id": done["completion_id"], "nino": done["child_id"],
                             "nombre": nombres.get(done["child_id"], done.get("child_name", "")), "hora": hora,
-                            "aprobada": bool(done.get("approved"))})
+                            "aprobada": bool(done.get("approved")), "estrellas": done.get("points", 0)})
     orden = [cid for cid in chores if cid in tareas]
     rewards_attrs = attrs("sensor.taskmate_rewards")
     recompensas = [{"id": r["id"], "nombre": nombre(r), "emoji": emoji(r, "🎁"),
@@ -174,76 +171,21 @@ def estado() -> dict:
                         "nombre": nombres.get(p["child_id"], p.get("child_name", "")), "titulo": p.get("reward_name", ""),
                         "emoji": EMOJIS.get(p.get("reward_icon", ""), "🎁"), "coste": p.get("cost", 0),
                         "cuando": hora.strftime("%d/%m %H:%M")})
+    # Huchas de TaskMate: lo que cada niño ha metido en cada recompensa
+    por_id = {n["id"]: n for n in ninos}
+    for a in rewards_attrs.get("pool_allocations", []):
+        n = por_id.get(a.get("child_id"))
+        if n and a.get("allocated_points", 0) > 0:
+            n["huchas"][a["reward_id"]] = a["allocated_points"]
     penalizaciones = [{"id": p["id"], "nombre": nombre(p), "emoji": emoji(p, "⚠️"), "estrellas": p.get("points", 0),
                        "para": p.get("assigned_to") or [n["id"] for n in ninos]}
                       for p in attrs("sensor.taskmate_incentives").get("penalties", [])]
-    return repartir({"fecha": board.get("date"), "ninos": ninos, "tareas": [tareas[cid] for cid in orden],
-                     "recompensas": recompensas, "pedidas": pedidas, "penalizaciones": penalizaciones})
-
-
-def huchas_leer() -> dict:
-    """{"huchas": {niño: {recompensa: estrellas}}, "tareas": {hecha: [recompensa, ...]}} (vacío si aún no hay)."""
-    try:
-        with open(HUCHAS, encoding="utf-8") as f:
-            d = json.load(f)
-    except FileNotFoundError:
-        d = {}
-    d.setdefault("huchas", {})
-    d.setdefault("tareas", {})
-    return d
-
-
-def huchas_escribir(d: dict) -> None:
-    tmp = HUCHAS + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, HUCHAS)
+    return {"fecha": board.get("date"), "ninos": ninos, "tareas": [tareas[cid] for cid in orden],
+            "recompensas": recompensas, "pedidas": pedidas, "penalizaciones": penalizaciones}
 
 
 def coste(r: dict, nino: str) -> int:
     return int(r["costes"].get(nino, r["coste"]))
-
-
-def repartir(e: dict) -> dict:
-    """Añade a cada niño de [e] sus «huchas» y sus estrellas «libres», y deja las huchas cuadradas con TaskMate."""
-    with _huchas_lock:
-        d = huchas_leer()
-        antes = json.dumps(d, sort_keys=True)
-        recompensas = {r["id"]: r for r in e["recompensas"]}
-        for n in e["ninos"]:
-            h = d["huchas"].get(n["id"], {})
-            # Recompensas que ya no existen o no son suyas: sus estrellas vuelven a estar libres
-            h = {rid: min(int(v), coste(recompensas[rid], n["id"])) for rid, v in h.items()
-                 if rid in recompensas and n["id"] in recompensas[rid]["para"] and int(v) > 0}
-            # Si tiene menos estrellas que lo guardado, se sacan de las huchas que menos llevan
-            exceso = sum(h.values()) - max(0, n["estrellas"])
-            while exceso > 0 and h:
-                rid = min(h, key=lambda k: (h[k], k))
-                quita = min(h[rid], exceso)
-                h[rid] -= quita
-                exceso -= quita
-                if not h[rid]:
-                    del h[rid]
-            if h:
-                d["huchas"][n["id"]] = h
-            else:
-                d["huchas"].pop(n["id"], None)
-            n["huchas"] = h
-            n["libres"] = max(0, n["estrellas"] - sum(h.values()))
-        # Solo hace falta recordar de dónde vino cada estrella mientras la tarea se pueda deshacer (hoy)
-        hoy = {h["id"] for t in e["tareas"] for h in t["hechas"]}
-        d["tareas"] = {k: v for k, v in d["tareas"].items() if k in hoy}
-        if json.dumps(d, sort_keys=True) != antes:
-            huchas_escribir(d)
-    return e
-
-
-def huchas_cambiar(nino: str, rid: str, delta: int) -> None:
-    with _huchas_lock:
-        d = huchas_leer()
-        h = d["huchas"].setdefault(nino, {})
-        h[rid] = max(0, h.get(rid, 0) + delta)
-        huchas_escribir(d)
 
 
 def avisar(titulo: str, detalle: str = "") -> None:
@@ -419,35 +361,37 @@ class Handler(BaseHTTPRequestHandler):
                 hecha = str(body.get("hecha", ""))
                 if not any(h["id"] == hecha for t in actual["tareas"] for h in t["hechas"]):
                     return self.reply(409, {"error": "no es una tarea hecha hoy", "estado": actual})
-                nino = next(h["nino"] for t in actual["tareas"] for h in t["hechas"] if h["id"] == hecha)
-                with _huchas_lock:
-                    d = huchas_leer()
-                    h = d["huchas"].get(nino, {})
-                    for rid in d["tareas"].pop(hecha, []):
-                        if h.get(rid, 0) > 0:
-                            h[rid] -= 1
-                    huchas_escribir(d)
+                h, t = next((h, t) for t in actual["tareas"] for h in t["hechas"] if h["id"] == hecha)
+                saldo = next(n["estrellas"] for n in actual["ninos"] if n["id"] == h["nino"])
                 ha("/api/services/taskmate/undo_chore_approval", {"completion_id": hecha})
                 ha("/api/services/taskmate/reject_chore", {"completion_id": hecha, "reason": "Deshecho en el marco"})
-                return self.reply(200, esperar(lambda e: not any(h["id"] == hecha for t in e["tareas"] for h in t["hechas"])))
+                e = esperar(lambda e: not any(x["id"] == hecha for t in e["tareas"] for x in t["hechas"]))
+                # TaskMate, al deshacer, deja el saldo en 0 como mínimo: si la estrella ya estaba en una hucha (o ya
+                # debía), le quita lo que falte para que quede a deber
+                if h.get("aprobada"):
+                    ahora = next((n["estrellas"] for n in e["ninos"] if n["id"] == h["nino"]), None)
+                    falta = ahora - (saldo - int(h.get("estrellas", 0))) if ahora is not None else 0
+                    if falta > 0:
+                        ha("/api/services/taskmate/remove_points",
+                           {"child_id": h["nino"], "points": falta, "reason": f"Deshecho en el marco: {t['nombre']}"})
+                        e = esperar(lambda e: any(n["id"] == h["nino"] and n["estrellas"] < ahora for n in e["ninos"]))
+                return self.reply(200, e)
             if self.path == "/guardar":
-                rec, nino, hecha = str(body.get("recompensa", "")), str(body.get("nino", "")), str(body.get("hecha") or "")
+                rec, nino = str(body.get("recompensa", "")), str(body.get("nino", ""))
                 r = next((r for r in actual["recompensas"] if r["id"] == rec), None)
                 n = next((n for n in actual["ninos"] if n["id"] == nino), None)
                 if r is None or n is None or nino not in r["para"] or not r["disponible"]:
                     return self.reply(409, {"error": "esa recompensa no es de ese niño", "estado": actual})
-                with _huchas_lock:
-                    d = huchas_leer()
-                    h = d["huchas"].setdefault(nino, {})
-                    if n["estrellas"] - sum(h.values()) < 1:
-                        return self.reply(409, {"error": "no le quedan estrellas por guardar", "estado": actual})
-                    if h.get(rec, 0) >= coste(r, nino):
-                        return self.reply(409, {"error": "esa hucha ya está llena", "estado": actual})
-                    h[rec] = h.get(rec, 0) + 1
-                    if hecha and any(x["id"] == hecha and x["nino"] == nino for t in actual["tareas"] for x in t["hechas"]):
-                        d["tareas"].setdefault(hecha, []).append(rec)
-                    huchas_escribir(d)
-                return self.reply(200, estado())
+                if n["libres"] < 1:
+                    return self.reply(409, {"error": "no le quedan estrellas por guardar", "estado": actual})
+                antes = n["huchas"].get(rec, 0)
+                if antes >= coste(r, nino):
+                    return self.reply(409, {"error": "esa hucha ya está llena", "estado": actual})
+                try:
+                    ha("/api/services/taskmate/allocate_points_to_pool", {"child_id": nino, "reward_id": rec, "points": 1})
+                except Exception as e:  # noqa: BLE001
+                    return self.reply(409, {"error": mensaje(e), "estado": actual})
+                return self.reply(200, esperar(lambda e: any(x["id"] == nino and x["huchas"].get(rec, 0) > antes for x in e["ninos"])))
             if self.path == "/pedir":
                 rec, nino = str(body.get("recompensa", "")), str(body.get("nino", ""))
                 r = next((r for r in actual["recompensas"] if r["id"] == rec), None)
@@ -484,15 +428,8 @@ class Handler(BaseHTTPRequestHandler):
                 if motivo:
                     return self.reply(403, {"error": motivo})
                 if self.path == "/aprobar":
-                    # Las estrellas del canje salen de su hucha (antes de que TaskMate las descuente, para que no se
-                    # saquen de otra)
-                    p = next(p for p in actual["pedidas"] if p["id"] == pedida)
-                    huchas_cambiar(p["nino"], p["recompensa"], -int(p["coste"]))
-                    try:
-                        ha("/api/services/taskmate/approve_reward", {"claim_id": pedida})
-                    except Exception:
-                        huchas_cambiar(p["nino"], p["recompensa"], int(p["coste"]))
-                        raise
+                    # Con la hucha llena, TaskMate la vacía (las estrellas ya salieron del saldo al guardarlas)
+                    ha("/api/services/taskmate/approve_reward", {"claim_id": pedida})
                 else:
                     ha("/api/services/taskmate/reject_reward", {"claim_id": pedida, "reason": "Rechazado en el marco"})
                 return self.reply(200, esperar(lambda e: not any(p["id"] == pedida for p in e["pedidas"])))

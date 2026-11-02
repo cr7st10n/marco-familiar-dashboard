@@ -101,17 +101,17 @@ private fun FamilyListsScreen(lists: List<FamilyList>, today: LocalDate, state: 
                 if (state.choreError == null) punishing = null
             }
         }
-        // Niño que elige en qué hucha guarda sus estrellas, con la tarea hecha de la que vienen (si acaba de hacerla)
-        var saving by remember { mutableStateOf<Pair<String, String?>?>(null) }
+        // Niño que elige en qué hucha guarda sus estrellas
+        var saving by remember { mutableStateOf<String?>(null) }
         // Tarea recién marcada (tarea, niño): al llegar el estado con ella hecha, se le pregunta dónde guarda la estrella
         var justDone by remember { mutableStateOf<Pair<String, String>?>(null) }
         LaunchedEffect(kids, state.choreBusy) {
             val (chore, kid) = justDone ?: return@LaunchedEffect
             if (state.choreBusy != null) return@LaunchedEffect
             justDone = null
-            val done = kids.tareas.orEmpty().firstOrNull { it.id == chore }?.hechas.orEmpty().lastOrNull { it.nino == kid } ?: return@LaunchedEffect
+            if (kids.tareas.orEmpty().firstOrNull { it.id == chore }?.hechas.orEmpty().none { it.nino == kid }) return@LaunchedEffect
             val who = kids.ninos.orEmpty().firstOrNull { it.id == kid } ?: return@LaunchedEffect
-            if (who.libres > 0 && kids.rewardsWithRoom(who).isNotEmpty()) saving = kid to done.id
+            if (who.libres > 0 && kids.rewardsWithRoom(who).isNotEmpty()) saving = kid
         }
         Box(Modifier.fillMaxSize()) {
             ScreenPadding {
@@ -120,7 +120,7 @@ private fun FamilyListsScreen(lists: List<FamilyList>, today: LocalDate, state: 
                     Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         ChoresPanel(
                             kids, state.choreBusy, { chore, kid -> justDone = chore to kid; chores.onDone(chore, kid) }, chores.onUndo, Modifier.fillMaxWidth(),
-                            onSaveStars = { kid -> chores.onClearError(); saving = kid to null }
+                            onSaveStars = { kid -> chores.onClearError(); saving = kid }
                         )
                         RewardsPanel(kids, state.choreBusy, chores.onClaim, { claim, approve -> chores.onClearError(); asking = claim to approve }, Modifier.fillMaxWidth())
                         others.forEach { FamilyListPanel(it, today, Modifier.fillMaxWidth().weight(1f), compact = true) }
@@ -149,14 +149,14 @@ private fun FamilyListsScreen(lists: List<FamilyList>, today: LocalDate, state: 
                     onPin = { punishSent = true; chores.onPenalize(penalty.id, kid.id, it) }
                 ) { punishing = null }
             }
-            saving?.let { (kidId, done) ->
+            saving?.let { kidId ->
                 val kid = kids.ninos.orEmpty().firstOrNull { it.id == kidId }
                 val rewards = kids.recompensas.orEmpty().filter { it.disponible && kidId in it.para.orEmpty() }
                 // Sin estrellas por guardar o sin sitio en ninguna hucha: se cierra solo
                 if (kid == null || kid.libres <= 0 || kids.rewardsWithRoom(kid).isEmpty()) {
                     LaunchedEffect(Unit) { saving = null }
                 } else {
-                    StarPicker(kid, rewards, busy = state.choreBusy != null, error = state.choreError, onSave = { chores.onSave(kidId, it, done) }) { saving = null }
+                    StarPicker(kid, rewards, busy = state.choreBusy != null, error = state.choreError, onSave = { chores.onSave(kidId, it) }) { saving = null }
                 }
             }
         }

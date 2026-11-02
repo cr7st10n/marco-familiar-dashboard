@@ -36,9 +36,9 @@ class ChoresRepository(private val api: Api, cache: DiskCache, private val url: 
         resource.refresh { api.choreUndo(url + "deshacer", token, ChoreUndoRequest(done)).bodyOrThrow() }
             .onFailure { refresh() }
 
-    /** El niño guarda una de sus estrellas libres en la hucha de [reward] ([done]: la tarea de la que viene). */
-    suspend fun save(kid: String, reward: String, done: String?): Result<Chores> =
-        resource.refresh { api.starSave(url + "guardar", token, StarSaveRequest(kid, reward, done)).bodyOrThrow() }
+    /** El niño mete una de sus estrellas sueltas en la hucha de [reward]. */
+    suspend fun save(kid: String, reward: String): Result<Chores> =
+        resource.refresh { api.starSave(url + "guardar", token, StarSaveRequest(kid, reward)).bodyOrThrow() }
             .onFailure { refresh() }
 
     /** El niño pide canjear [reward]; queda pendiente hasta que un padre lo apruebe. */

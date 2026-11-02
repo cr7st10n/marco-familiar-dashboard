@@ -41,8 +41,8 @@ class ChoreCallbacks(
     val onDone: (String, String) -> Unit,
     val onUndo: (String) -> Unit,
     val onClaim: (String, String) -> Unit,
-    /** Guardar una estrella: niño, recompensa y la tarea hecha de la que viene (o null). */
-    val onSave: (String, String, String?) -> Unit,
+    /** Meter una estrella en una hucha: niño y recompensa. */
+    val onSave: (String, String) -> Unit,
     /** Penalizar con el PIN de padres: penalización, niño y PIN. */
     val onPenalize: (String, String, String) -> Unit,
     val onDecide: (String, String, Boolean) -> Unit,
@@ -89,7 +89,10 @@ fun ChoresPanel(
     }
 }
 
-/** Un niño con sus estrellas de la semana y, si tiene alguna sin guardar en una hucha, «Guardar N ⭐» para elegir dónde. */
+/**
+ * Un niño con sus estrellas de la semana; si tiene sueltas, «Guardar N ⭐» para elegir hucha, y si debe (saldo negativo
+ * por una penalización), «Debe N ⭐».
+ */
 @Composable
 private fun KidStars(kid: Kid, canSave: Boolean, onSave: () -> Unit) {
     val color = parseColor(kid.color, Palette.Warm)
@@ -98,11 +101,18 @@ private fun KidStars(kid: Kid, canSave: Boolean, onSave: () -> Unit) {
         modifier = Modifier
             .background(color.copy(alpha = 0.12f), RoundedCornerShape(28.dp))
             .clickable(enabled = canSave, onClick = onSave)
-            .padding(start = 6.dp, end = if (canSave) 6.dp else 18.dp, top = 6.dp, bottom = 6.dp)
+            .padding(start = 6.dp, end = if (canSave || kid.estrellas < 0) 6.dp else 18.dp, top = 6.dp, bottom = 6.dp)
     ) {
         Initial(kid.nombre, color, 40)
         Text(kid.nombre, style = Type.Small.copy(color = Palette.Ink, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(start = 10.dp))
         Text("⭐ ${kid.semana}", style = Type.Small.copy(color = Palette.InkSoft), modifier = Modifier.padding(start = 10.dp))
+        if (kid.estrellas < 0) {
+            Text(
+                "Debe ${-kid.estrellas} ⭐",
+                style = Type.Tiny.copy(color = Color.White, fontWeight = FontWeight.SemiBold),
+                modifier = Modifier.padding(start = 12.dp).background(Palette.Accent, RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 6.dp)
+            )
+        }
         if (canSave) {
             Text(
                 "Guardar ${kid.libres} ⭐",
