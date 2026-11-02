@@ -11,6 +11,13 @@ fun DoorLock.lowBattery(): Boolean = bateria_critica == true || (bateria != null
 /** La cerradura sin echar: sin llave o con el pestillo abierto. */
 fun DoorLock.isUnlocked(): Boolean = estado == "unlocked" || estado == "open"
 
+fun DoorLock.emoji(): String = when (estado) {
+    null -> "🔐"
+    "locked" -> "🔒"
+    "jammed" -> "⚠️"
+    else -> "🔓"
+}
+
 fun DoorLock.stateText(): String = when (estado) {
     null -> "Sin datos todavía"
     "locked" -> "Cerrada con llave"

@@ -27,7 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lito.planify.dashboard.UiState
 import com.lito.planify.dashboard.data.Event
+import com.lito.planify.dashboard.data.Security
 import com.lito.planify.dashboard.data.alert
+import com.lito.planify.dashboard.data.emoji
+import com.lito.planify.dashboard.data.isArmed
+import com.lito.planify.dashboard.data.stateText
 import com.lito.planify.dashboard.ui.theme.Palette
 import com.lito.planify.dashboard.ui.theme.Type
 import java.time.DayOfWeek
@@ -68,7 +72,9 @@ fun FamilyTodayScreen(state: UiState, onOpen: (Page) -> Unit) {
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().weight(0.53f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Con seguridad o coche: calendario a media altura y una fila de tarjetas (Seguridad, Coche, Clima) debajo
+        val extras = state.shopping?.seguridad != null || state.shopping?.coche != null
+        Row(Modifier.fillMaxWidth().weight(if (extras) 0.29f else 0.53f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             (0 until WEEK_DAYS).forEach { i ->
                 val day = today.plusDays(i.toLong())
                 WeekDay(
@@ -76,16 +82,21 @@ fun FamilyTodayScreen(state: UiState, onOpen: (Page) -> Unit) {
                     events.filter { it.at.toLocalDate() == day },
                     shifts.filter { it.at.toLocalDate() == day },
                     menu.firstOrNull { it.at.toLocalDate() == day },
-                    Modifier.weight(1f).fillMaxHeight()
+                    Modifier.weight(1f).fillMaxHeight(),
+                    compact = extras
                 )
             }
         }
-        Row(Modifier.fillMaxWidth().weight(0.22f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        if (extras) Row(Modifier.fillMaxWidth().weight(0.23f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            SecurityTile(state.shopping?.seguridad, now, Modifier.weight(1f).fillMaxHeight()) { onOpen(Page.Home) }
+            CarTile(state, Modifier.weight(1f).fillMaxHeight()) { onOpen(Page.Home) }
+            ClimateTile(state, Modifier.weight(1.25f).fillMaxHeight()) { onOpen(Page.Home) }
+        }
+        Row(Modifier.fillMaxWidth().weight(if (extras) 0.23f else 0.22f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             KidsTile(state, Modifier.weight(1f).fillMaxHeight()) { onOpen(Page.Tasks) }
             ShoppingTile(state, Modifier.weight(1f).fillMaxHeight()) { onOpen(Page.Tasks) }
-            EnergyTile(state, Modifier.weight(1.25f).fillMaxHeight()) { onOpen(Page.Home) }
-            // Solo si pasa algo (alarma, cerradura atascada o sin cerrar de noche, batería baja)
-            state.shopping?.seguridad?.alert(now)?.let { SecurityAlertTile(it, Modifier.weight(0.8f).fillMaxHeight()) { onOpen(Page.Home) } }
+            // Con la tarjeta del coche arriba, aquí solo la luz
+            EnergyTile(state, Modifier.weight(1.25f).fillMaxHeight(), withCar = !extras) { onOpen(Page.Home) }
         }
     }
 }
@@ -127,10 +138,12 @@ private fun NextCompact(event: Event, now: LocalDateTime, live: Boolean) {
 internal fun WeekDay(
     day: LocalDate, today: LocalDate, now: LocalDateTime, events: List<Event>, shifts: List<Event>, menu: Event?, modifier: Modifier,
     forecast: com.lito.planify.dashboard.data.Forecast? = null,
-    small: Boolean = false
+    small: Boolean = false,
+    /** Portada a media altura: cabecera menor, hoy sin lo ya pasado, 2 citas como mucho («+N más») y menú en 2 líneas. */
+    compact: Boolean = false
 ) {
     val isToday = day == today
-    Column(modifier.background(if (isToday) Palette.Card else Palette.Card.copy(alpha = 0.6f), RoundedCornerShape(24.dp)).padding(horizontal = 14.dp, vertical = 14.dp).alpha(if (day < today) 0.55f else 1f)) {
+    Column(modifier.background(if (isToday) Palette.Card else Palette.Card.copy(alpha = 0.6f), RoundedCornerShape(24.dp)).padding(horizontal = 14.dp, vertical = if (compact) 10.dp else 14.dp).alpha(if (day < today) 0.55f else 1f)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 if (isToday) "Hoy" else day.dayOfWeek.getDisplayName(TextStyle.SHORT, Spanish).trimEnd('.').capitalized(),
@@ -143,7 +156,7 @@ internal fun WeekDay(
                 style = Type.Small.copy(color = if (day.dayOfMonth == 1) Palette.Accent else Palette.InkSoft, fontWeight = FontWeight.SemiBold),
                 modifier = Modifier.padding(end = 8.dp, bottom = 3.dp)
             )
-            Text("${day.dayOfMonth}", style = Type.Large.copy(color = if (isToday) Palette.Accent else Palette.Ink, fontWeight = FontWeight.SemiBold))
+            Text("${day.dayOfMonth}", style = (if (compact) Type.Body else Type.Large).copy(color = if (isToday) Palette.Accent else Palette.Ink, fontWeight = FontWeight.SemiBold))
         }
         // Calendario: el tiempo del día (icono, máx/mín y lluvia) bajo la cabecera, si hay previsión
         forecast?.dayIndex(day)?.takeIf { it >= 0 }?.let { k ->
@@ -169,30 +182,38 @@ internal fun WeekDay(
                 )
             }
         }
-        Hairline(Modifier.padding(vertical = 10.dp))
-        Column(Modifier.weight(1f).fadingScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (events.isEmpty()) Text("—", style = Type.Small.copy(color = Palette.InkMuted))
-            events.forEach { e -> EventTapTarget(e) { WeekItem(e, past = e.isPast(now), small = small) } }
+        Hairline(Modifier.padding(vertical = if (compact) 6.dp else 10.dp))
+        val pending = if (compact && isToday) events.filterNot { it.isPast(now) } else events
+        // El menú ocupa sitio: con él caben 2 citas enteras; sin él (fines de semana), 3
+        val shown = if (compact) pending.take(if (menu != null) COMPACT_EVENTS - 1 else COMPACT_EVENTS) else pending
+        Column(Modifier.weight(1f).fadingScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
+            if (shown.isEmpty()) Text("—", style = Type.Small.copy(color = Palette.InkMuted))
+            shown.forEach { e -> EventTapTarget(e) { WeekItem(e, past = e.isPast(now), small = small, lines = if (compact) 2 else 4, compact = compact) } }
         }
-        menu?.let { MenuPill(it, Modifier.padding(top = 8.dp), small = small) }
+        // Fuera de lo que se desplaza: siempre a la vista, aunque las citas no quepan enteras
+        if (pending.size > shown.size) Text("+${pending.size - shown.size} más", style = Type.Tiny.copy(color = Palette.InkSoft, fontSize = 17.sp, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(top = 2.dp))
+        menu?.let { MenuPill(it, Modifier.padding(top = if (compact) 4.dp else 8.dp), small = small, lines = if (compact) 2 else 4) }
     }
 }
 
 private val MenuGreen = Color(0xFF7CB342)
 
+/** Citas por día en la portada a media altura (una menos si hay menú); el resto, «+N más» (todas en la pestaña Calendario). */
+private const val COMPACT_EVENTS = 3
+
 /** El menú del cole de un día: «🍽️ primero · segundo» y, si un niño come otra cosa, «Nombre: …» debajo. */
 @Composable
-private fun MenuPill(menu: Event, modifier: Modifier, small: Boolean = false) {
+private fun MenuPill(menu: Event, modifier: Modifier, small: Boolean = false, lines: Int = 4) {
     val other = Regex("""\s*\(([^():]+):\s*([^()]+)\)\s*$""").find(menu.title)
     EventTapTarget(menu, modifier) {
         Column(Modifier.fillMaxWidth().background(MenuGreen.copy(alpha = 0.14f), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 6.dp)) {
             Text(
                 "🍽️ " + (other?.let { menu.title.substring(0, it.range.first) } ?: menu.title),
                 style = Type.Tiny.copy(color = Palette.Ink, fontSize = if (small) 17.sp else 19.sp, lineHeight = if (small) 21.sp else 24.sp),
-                maxLines = 4,
+                maxLines = lines,
                 overflow = TextOverflow.Ellipsis
             )
-            other?.let {
+            if (lines > 2) other?.let {
                 Text("${it.groupValues[1]}: ${it.groupValues[2]}", style = Type.Tiny.copy(color = Palette.InkSoft, fontSize = 17.sp, lineHeight = 21.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -200,12 +221,13 @@ private fun MenuPill(menu: Event, modifier: Modifier, small: Boolean = false) {
 }
 
 @Composable
-private fun WeekItem(e: Event, past: Boolean, small: Boolean = false) {
+private fun WeekItem(e: Event, past: Boolean, small: Boolean = false, lines: Int = 4, compact: Boolean = false) {
     Row(Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min).alpha(if (past) 0.4f else 1f)) {
         Box(Modifier.width(5.dp).fillMaxHeight().background(parseColor(e.calendar_color), RoundedCornerShape(3.dp)))
         Column(Modifier.padding(start = 8.dp)) {
             Text(if (e.all_day) "Todo el día" else e.at.format(HourMinute), style = Type.Tiny.copy(color = Palette.InkSoft, fontSize = if (small) 17.sp else 19.sp, fontWeight = FontWeight.SemiBold))
-            Text(e.title, style = Type.Small.copy(color = Palette.Ink, fontSize = if (small) 20.sp else 23.sp, lineHeight = if (small) 25.sp else 28.sp), maxLines = 4, overflow = TextOverflow.Ellipsis)
+            // En la portada a media altura, solo el título más pequeño (la hora igual): caben más citas
+            Text(e.title, style = Type.Small.copy(color = Palette.Ink, fontSize = if (compact) 19.sp else if (small) 20.sp else 23.sp, lineHeight = if (compact) 23.sp else if (small) 25.sp else 28.sp), maxLines = lines, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -213,10 +235,10 @@ private fun WeekItem(e: Event, past: Boolean, small: Boolean = false) {
 // --- Abajo: resúmenes ---
 
 @Composable
-private fun Tile(title: String, emoji: String, tint: Color, modifier: Modifier, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+private fun Tile(title: String, emoji: String, tint: Color, modifier: Modifier, onClick: (() -> Unit)? = null, background: Color = Palette.Card, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier
-            .background(Palette.Card, RoundedCornerShape(28.dp))
+            .background(background, RoundedCornerShape(28.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 24.dp, vertical = 18.dp)
     ) {
@@ -258,14 +280,14 @@ private fun ShoppingTile(state: UiState, modifier: Modifier, onClick: () -> Unit
 }
 
 @Composable
-private fun EnergyTile(state: UiState, modifier: Modifier, onClick: () -> Unit) {
+private fun EnergyTile(state: UiState, modifier: Modifier, withCar: Boolean = true, onClick: () -> Unit) {
     val now = state.now
     val window = priceWindow(state.energy?.prices.orEmpty(), now)
     val current = window.lastOrNull { !it.time.isAfter(now) }
     val min = window.minOfOrNull { it.eur_kwh } ?: 0.0
     val max = window.maxOfOrNull { it.eur_kwh } ?: 0.0
-    val car = state.shopping?.coche
-    Tile("Luz y coche", "⚡", Amber, modifier, onClick) {
+    val car = state.shopping?.coche?.takeIf { withCar }
+    Tile(if (withCar) "Luz y coche" else "Luz", "⚡", Amber, modifier, onClick) {
         Row(Modifier.fillMaxWidth().weight(1f).padding(top = 6.dp)) {
             car?.bateria?.let { BatteryGauge(it, car, Modifier.width(170.dp).fillMaxHeight().padding(end = 18.dp)) }
             Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -283,4 +305,76 @@ private fun EnergyTile(state: UiState, modifier: Modifier, onClick: () -> Unit) 
             }
         }
     }
+}
+
+// --- Fila de en medio: seguridad, coche y clima ---
+
+/** Cerradura y alarma en una línea cada una; si pasa algo, la tarjeta entera en rojo con el aviso. */
+@Composable
+private fun SecurityTile(security: Security?, now: LocalDateTime, modifier: Modifier, onClick: () -> Unit) {
+    val alert = security?.alert(now)
+    Tile("Seguridad", "🛡️", if (alert != null) Red else Palette.Online, modifier, onClick, background = if (alert != null) Red.copy(alpha = 0.12f) else Palette.Card) {
+        if (alert != null) {
+            Text(alert, style = Type.Body.copy(color = Red, fontWeight = FontWeight.SemiBold), maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+            return@Tile
+        }
+        Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            security?.cerradura?.let { lock ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TileLine("${lock.emoji()} ${lock.stateText()}", if (lock.estado == null) Palette.InkMuted else Palette.Ink, Modifier.weight(1f))
+                    lock.bateria?.let { Text("🔋 ${it.toInt()} %", style = Type.Small.copy(color = Palette.InkSoft)) }
+                }
+            }
+            security?.alarma?.let { alarm -> TileLine("🛡️ ${alarm.stateText()}", if (alarm.isArmed()) Palette.Online else if (alarm.estado == null) Palette.InkMuted else Palette.Ink) }
+        }
+    }
+}
+
+/** Batería en semicírculo (con autonomía), si está enchufado o cargando y la próxima franja buena para cargar. */
+@Composable
+private fun CarTile(state: UiState, modifier: Modifier, onClick: () -> Unit) {
+    val car = state.shopping?.coche
+    val level = car?.bateria
+    Tile(car?.modelo?.takeIf { it.isNotBlank() } ?: "Coche", "🚗", if (car?.cargando == true) Charging else Palette.Online, modifier, onClick) {
+        if (car == null || level == null) {
+            TileLine("Sin datos del coche", Palette.InkMuted, Modifier.padding(top = 8.dp))
+            Text("Saldrán cuando el coche despierte", style = Type.Small.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 4.dp))
+            return@Tile
+        }
+        val now = state.now
+        val window = cheapestWindow(state.energy?.prices.orEmpty(), now, 4, now.toLocalDate().plusDays(2).atStartOfDay(), state.carCharge)
+        Row(Modifier.fillMaxWidth().weight(1f).padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            BatteryGauge(level, car, Modifier.width(170.dp).fillMaxHeight().padding(end = 18.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                TileLine(if (car.cargando) "⚡ Cargando" else if (car.enchufado) "🔌 Enchufado" else "🅿️ Sin enchufar", if (car.cargando) Charging else Palette.Ink)
+                window?.let { (from, to, _) ->
+                    val day = when (from.toLocalDate()) { now.toLocalDate() -> "hoy"; now.toLocalDate().plusDays(1) -> "mañana"; else -> from.toLocalDate().shortLabel().lowercase(Spanish) }
+                    Text("Cargar $day ${from.format(HourMinute)}–${to.format(HourMinute)}", style = Type.Small.copy(color = Palette.InkSoft), maxLines = 2)
+                }
+            }
+        }
+    }
+}
+
+/** El termostato de la casa si lo hay; si no, a la espera de conectar la climatización. */
+@Composable
+private fun ClimateTile(state: UiState, modifier: Modifier, onClick: () -> Unit) {
+    val clima = state.shopping?.casa?.clima
+    Tile("Clima", "❄️", Palette.Rain, modifier, onClick) {
+        if (clima == null) {
+            TileLine("Pendiente de conectar", Palette.InkMuted, Modifier.padding(top = 8.dp))
+            Text("Aquí saldrá la temperatura de cada zona", style = Type.Small.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 4.dp))
+            return@Tile
+        }
+        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.Bottom) {
+            Text(clima.temp.degrees(), style = Type.Large.copy(fontWeight = FontWeight.SemiBold))
+            clima.consigna?.let { Text("→ ${it.degrees()}", style = Type.Small.copy(color = Palette.InkSoft), modifier = Modifier.padding(start = 12.dp, bottom = 4.dp)) }
+        }
+        clima.nombre?.let { Text(it, style = Type.Small.copy(color = Palette.InkSoft), maxLines = 1) }
+    }
+}
+
+@Composable
+private fun TileLine(text: String, color: Color, modifier: Modifier = Modifier) {
+    Text(text, style = Type.Body.copy(color = color, fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier)
 }

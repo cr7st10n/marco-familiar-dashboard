@@ -1,7 +1,6 @@
 package com.lito.planify.dashboard.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,11 +17,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.lito.planify.dashboard.data.Alarm
 import com.lito.planify.dashboard.data.DoorLock
 import com.lito.planify.dashboard.data.Security
 import com.lito.planify.dashboard.data.alert
+import com.lito.planify.dashboard.data.emoji
 import com.lito.planify.dashboard.data.isArmed
 import com.lito.planify.dashboard.data.isNight
 import com.lito.planify.dashboard.data.isUnlocked
@@ -48,13 +47,7 @@ internal fun SecurityPanel(security: Security, now: LocalDateTime, modifier: Mod
 @Composable
 private fun LockRow(lock: DoorLock, now: LocalDateTime) {
     val bad = lock.estado == "jammed" || (isNight(now) && lock.isUnlocked())
-    val emoji = when {
-        lock.estado == null -> "🔐"
-        lock.estado == "locked" -> "🔒"
-        lock.estado == "jammed" -> "⚠️"
-        else -> "🔓"
-    }
-    StatusRow(emoji, lock.nombre ?: "Puerta", lock.stateText(), when {
+    StatusRow(lock.emoji(), lock.nombre ?: "Puerta", lock.stateText(), when {
         bad -> Red
         lock.estado == null -> Palette.InkMuted
         else -> Palette.Ink
@@ -99,18 +92,4 @@ private fun Pill(text: String, color: Color) {
         style = Type.Small.copy(color = color, fontWeight = FontWeight.SemiBold),
         modifier = Modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(16.dp)).padding(horizontal = 14.dp, vertical = 4.dp)
     )
-}
-
-/** Portada: aviso rojo y pequeño, solo cuando pasa algo; lleva a la pestaña Casa. */
-@Composable
-internal fun SecurityAlertTile(text: String, modifier: Modifier, onClick: () -> Unit) {
-    Column(
-        modifier
-            .background(Red.copy(alpha = 0.12f), RoundedCornerShape(28.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 18.dp)
-    ) {
-        Text("SEGURIDAD", style = Type.Label.copy(color = Red, fontSize = 18.sp))
-        Text(text, style = Type.Body.copy(color = Red, fontWeight = FontWeight.SemiBold), maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
-    }
 }
