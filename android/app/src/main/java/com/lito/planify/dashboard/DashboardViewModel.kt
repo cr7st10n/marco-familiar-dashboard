@@ -238,11 +238,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     /** Deshace una tarea hecha hoy ([done] es el id de la hecha). */
     fun choreUndo(done: String) = sendChore(done) { it.undo(done) }
 
+    /** Un niño guarda una estrella en la hucha de [reward] ([done]: la tarea de la que viene, si acaba de hacerla). */
+    fun starSave(kid: String, reward: String, done: String?) = sendChore(reward) { it.save(kid, reward, done) }
+
     /** Un niño pide canjear [reward]. */
     fun rewardClaim(reward: String, kid: String) = sendChore(reward) { it.claim(reward, kid) }
 
     /** Un padre aprueba o rechaza el canje [claim] con su [pin]. */
     fun rewardDecide(claim: String, pin: String, approve: Boolean) = sendChore(claim) { it.decide(claim, pin, approve) }
+
+    /** Un padre aplica la penalización [penalty] a [kid] con su [pin]. */
+    fun penalize(penalty: String, kid: String, pin: String) = sendChore(penalty) { it.penalize(penalty, kid, pin) }
 
     fun clearChoreError() = _state.update { it.copy(choreError = null) }
 

@@ -69,6 +69,8 @@ class MainActivity : ComponentActivity() {
             onDone = viewModel::choreDone,
             onUndo = viewModel::choreUndo,
             onClaim = viewModel::rewardClaim,
+            onSave = viewModel::starSave,
+            onPenalize = viewModel::penalize,
             onDecide = viewModel::rewardDecide,
             onClearError = viewModel::clearChoreError,
             onShoppingRemove = viewModel::shoppingRemove,

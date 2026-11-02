@@ -220,21 +220,29 @@ data class Chores(
     val tareas: List<Chore>? = null,
     val recompensas: List<Reward>? = null,
     /** Canjes pedidos por los niños que esperan a que un padre los apruebe. */
-    val pedidas: List<RewardClaim>? = null
+    val pedidas: List<RewardClaim>? = null,
+    val penalizaciones: List<Penalty>? = null
 ) {
     /** Tareas que alguien todavía tiene por hacer hoy. */
     fun pending(): Int = tareas.orEmpty().count { !it.para.isNullOrEmpty() }
 }
 
-/** Un niño: `estrellas` acumuladas, las ganadas esta semana y las que puede gastar (sin las de canjes pendientes). */
+/**
+ * Un niño: `estrellas` acumuladas, las ganadas esta semana y las que puede gastar (sin las de canjes pendientes).
+ * `huchas`: las estrellas que ha guardado para cada recompensa (por id); `libres`: las que aún no ha guardado en ninguna.
+ */
 data class Kid(
     val id: String,
     val nombre: String,
     val color: String? = null,
     val estrellas: Int = 0,
     val semana: Int = 0,
-    val disponibles: Int = 0
-)
+    val disponibles: Int = 0,
+    val huchas: Map<String, Int>? = null,
+    val libres: Int = 0
+) {
+    fun saved(reward: String): Int = huchas?.get(reward) ?: 0
+}
 
 /** Recompensa de TaskMate: `costes` por niño (si TaskMate lo ajusta), `para` a quién se ofrece. */
 data class Reward(
@@ -249,6 +257,17 @@ data class Reward(
     fun costFor(kid: String): Int = costes?.get(kid) ?: coste
 }
 
+/** Penalización de TaskMate: quita [estrellas] al niño; la aplica un padre con su PIN. `para`: a quién se puede poner. */
+data class Penalty(
+    val id: String,
+    val nombre: String,
+    val emoji: String? = null,
+    val estrellas: Int = 0,
+    val para: List<String>? = null
+)
+
+data class PenaltyRequest(val penalizacion: String, val nino: String, val pin: String)
+
 /** Un canje pendiente: qué pidió quién y cuándo («20/10 18:30»). */
 data class RewardClaim(
     val id: String,
@@ -262,6 +281,9 @@ data class RewardClaim(
 )
 
 data class RewardClaimRequest(val recompensa: String, val nino: String)
+
+/** Guardar una estrella libre en la hucha de [recompensa]; [hecha], la tarea de la que viene (si se deshace, sale). */
+data class StarSaveRequest(val nino: String, val recompensa: String, val hecha: String? = null)
 
 data class ShoppingRemoveRequest(val producto: String)
 
