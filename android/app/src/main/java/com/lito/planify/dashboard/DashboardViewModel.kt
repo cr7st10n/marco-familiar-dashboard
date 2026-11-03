@@ -310,6 +310,20 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /** Temperatura del agua del termo, en grados enteros entre sus límites (si no se saben, 40–65 °C). */
+    fun heaterSetpoint(degrees: Double) {
+        val t = _state.value.shopping?.casa?.termo ?: return
+        val g = Math.round(degrees).toDouble().coerceIn(t.min ?: 40.0, t.max ?: 65.0)
+        updateHome { it.copy(termo = it.termo?.copy(consigna = g)) }
+        sendHome("termo", mapOf("grados" to g))
+    }
+
+    /** Boost del termo: lo pone en el modo Boost o lo devuelve al normal (los dos, de la configuración del servidor). */
+    fun heaterBoost(on: Boolean) {
+        updateHome { it.copy(termo = it.termo?.copy(boost = on)) }
+        sendHome("termo", mapOf("boost" to on))
+    }
+
     /** Lo pulsado se ve enseguida: HA tarda unos segundos en confirmarlo y compra.json, hasta un minuto. */
     private fun updateHome(change: (com.lito.planify.dashboard.data.HomeStatus) -> com.lito.planify.dashboard.data.HomeStatus) {
         _state.update { s -> s.copy(shopping = s.shopping?.let { list -> list.casa?.let { list.copy(casa = change(it)) } ?: list }) }

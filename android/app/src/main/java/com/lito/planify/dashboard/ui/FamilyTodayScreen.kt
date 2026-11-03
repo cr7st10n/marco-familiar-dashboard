@@ -364,21 +364,53 @@ private fun CarTile(state: UiState, modifier: Modifier, onClick: () -> Unit) {
     }
 }
 
-/** El termostato de la casa si lo hay; si no, a la espera de conectar la climatización. */
+/**
+ * Acceso directo al clima de Casa: la temperatura de cada zona (Airzone) en pastillas de dos en dos o, sin zonas, el
+ * termostato; abajo, una línea con el termo (grados, duchas y si está en Boost). Lo que falte, «pendiente de conectar».
+ */
 @Composable
 private fun ClimateTile(state: UiState, modifier: Modifier, onClick: () -> Unit) {
-    val clima = state.shopping?.casa?.clima
+    val casa = state.shopping?.casa
+    val clima = casa?.clima
+    val zones = casa?.zonas?.takeIf { z -> z.any { it.temp != null } }
+    val heater = casa?.termo
     Tile("Clima", "❄️", Palette.Rain, modifier, onClick) {
-        if (clima == null) {
-            TileLine("Pendiente de conectar", Palette.InkMuted, Modifier.padding(top = 8.dp))
-            Text("Aquí saldrá la temperatura de cada zona", style = Type.Small.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 4.dp))
-            return@Tile
+        when {
+            zones != null -> Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                zones.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { z ->
+                            val tint = z.activity()?.second?.takeIf { z.accion == "heating" || z.accion == "cooling" } ?: Palette.Rain
+                            Text(
+                                "${z.nombre} ${z.temp.degrees()}",
+                                style = Type.Small.copy(color = Palette.Ink, fontWeight = FontWeight.Medium),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).background(tint.copy(alpha = 0.12f), RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        if (pair.size == 1) Box(Modifier.weight(1f))
+                    }
+                }
+            }
+            clima != null -> {
+                Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.Bottom) {
+                    Text(clima.temp.degrees(), style = Type.Large.copy(fontWeight = FontWeight.SemiBold))
+                    clima.consigna?.let { Text("→ ${it.degrees()}", style = Type.Small.copy(color = Palette.InkSoft), modifier = Modifier.padding(start = 12.dp, bottom = 4.dp)) }
+                }
+                clima.nombre?.let { Text(it, style = Type.Small.copy(color = Palette.InkSoft), maxLines = 1) }
+            }
+            else -> {
+                TileLine("Pendiente de conectar", Palette.InkMuted, Modifier.padding(top = 8.dp))
+                Text("Aquí saldrá la temperatura de cada zona", style = Type.Small.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 4.dp))
+            }
         }
-        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.Bottom) {
-            Text(clima.temp.degrees(), style = Type.Large.copy(fontWeight = FontWeight.SemiBold))
-            clima.consigna?.let { Text("→ ${it.degrees()}", style = Type.Small.copy(color = Palette.InkSoft), modifier = Modifier.padding(start = 12.dp, bottom = 4.dp)) }
+        if (heater != null) {
+            Box(Modifier.weight(1f))
+            val text = if (!heater.disponible) "🚿 Termo: pendiente de conectar"
+            else listOfNotNull("🚿 Termo ${heater.temp.degrees()}", heater.duchas?.let { showers(it) }, if (heater.boost) "⚡ Boost" else null).joinToString(" · ")
+            Text(text, style = Type.Small.copy(color = if (heater.disponible) (if (heater.boost) HotWater else Palette.Ink) else Palette.InkMuted, fontWeight = FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        clima.nombre?.let { Text(it, style = Type.Small.copy(color = Palette.InkSoft), maxLines = 1) }
     }
 }
 

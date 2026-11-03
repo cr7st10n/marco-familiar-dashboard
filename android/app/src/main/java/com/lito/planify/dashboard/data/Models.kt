@@ -107,12 +107,48 @@ data class CarStatus(
     val modelo: String? = null
 )
 
-/** La casa (Home Assistant): termostato, temperatura de las estancias, toldo y la música de los Echo. */
+/**
+ * La casa (Home Assistant): termostato, temperatura de las estancias, toldo, la música de los Echo, las zonas de la
+ * climatización (Airzone) y el termo. `zonas` y `termo` son null mientras no estén en la configuración del servidor.
+ */
 data class HomeStatus(
     val clima: Climate? = null,
     val estancias: List<RoomTemp>? = null,
     val toldo: Awning? = null,
-    val musica: Music? = null
+    val musica: Music? = null,
+    val zonas: List<Zone>? = null,
+    val termo: WaterHeater? = null
+)
+
+/**
+ * Una zona de la climatización (climate.* de HA, p. ej. Airzone), solo para mirar: `modo` es el estado de HA (off, heat,
+ * cool, auto, dry, fan_only) y `accion` lo que hace ahora (heating, cooling, idle, off). Sin `temp`: aún sin datos.
+ */
+data class Zone(
+    val nombre: String,
+    val temp: Double? = null,
+    val consigna: Double? = null,
+    val modo: String? = null,
+    val accion: String? = null,
+    val humedad: Double? = null
+)
+
+/**
+ * El termo eléctrico (water_heater.* de HA, p. ej. Ariston): temperatura del agua y la pedida (`consigna`), `modo` de
+ * HA (IMEMORY, GREEN, BOOST…), si está en Boost, límites del − / + (`min`, `max`) y, si el servidor los tiene, las duchas
+ * que quedan y si está calentando. `disponible` false: configurado pero aún sin datos en HA.
+ */
+data class WaterHeater(
+    val nombre: String? = null,
+    val disponible: Boolean = false,
+    val temp: Double? = null,
+    val consigna: Double? = null,
+    val modo: String? = null,
+    val boost: Boolean = false,
+    val min: Double? = null,
+    val max: Double? = null,
+    val duchas: Double? = null,
+    val calentando: Boolean? = null
 )
 
 /** Seguridad de la casa (compra.json «seguridad»), solo para mirar: el marco no abre ni desarma nada. */

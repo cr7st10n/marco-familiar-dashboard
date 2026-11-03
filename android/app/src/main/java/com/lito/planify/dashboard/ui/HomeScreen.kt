@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Deck
+import androidx.compose.material.icons.outlined.ElectricCar
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Thermostat
 import androidx.compose.material.icons.outlined.Upcoming
@@ -52,7 +53,9 @@ class HomeCallbacks(
     val onSetpoint: (Double) -> Unit = {},
     val onPreset: (String) -> Unit = {},
     val onAwning: (String) -> Unit = {},
-    val onMusic: (String, String) -> Unit = { _, _ -> }
+    val onMusic: (String, String) -> Unit = { _, _ -> },
+    val onHeaterTemp: (Double) -> Unit = {},
+    val onHeaterBoost: (Boolean) -> Unit = {}
 )
 
 /**
@@ -233,7 +236,7 @@ internal fun ComingSoonPanel(modifier: Modifier) {
 }
 
 @Composable
-private fun RoundButton(text: String, color: Color, size: Int = 72, filled: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun RoundButton(text: String, color: Color, size: Int = 72, filled: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
@@ -246,7 +249,7 @@ private fun RoundButton(text: String, color: Color, size: Int = 72, filled: Bool
 }
 
 @Composable
-private fun Chip(text: String, selected: Boolean, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun Chip(text: String, selected: Boolean, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
@@ -259,9 +262,9 @@ private fun Chip(text: String, selected: Boolean, color: Color, modifier: Modifi
 }
 
 /**
- * Prueba: Casa y Energía en una sola pestaña mientras faltan dispositivos por integrar. A la
- * izquierda la luz (precio de hoy y mejores horas); en el centro la calefacción y el coche; a la derecha el toldo, la
- * música y lo que vendrá, en una línea.
+ * Casa y Energía en una sola pestaña. A la izquierda la luz (precio de hoy y mejores horas); en el centro la seguridad,
+ * el clima (las zonas de Airzone) y el agua caliente (el termo); a la derecha el coche, el termostato y el toldo si los
+ * hay, y lo que vendrá, en una línea.
  */
 @Composable
 fun HomeEnergyScreen(state: UiState, actions: HomeCallbacks) {
@@ -279,19 +282,32 @@ fun HomeEnergyScreen(state: UiState, actions: HomeCallbacks) {
             }
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 state.shopping?.seguridad?.let { SecurityPanel(it, now, Modifier.fillMaxWidth()) }
-                casa?.clima?.let { ClimatePanel(it, casa.estancias.orEmpty(), actions, Modifier.fillMaxWidth().weight(1f), compact = true) }
-                car?.bateria?.let { CarPanel(car, Modifier.fillMaxWidth()) }
+                ZonesPanel(casa?.zonas, Modifier.fillMaxWidth().weight(1f))
+                WaterHeaterPanel(casa?.termo, actions, Modifier.fillMaxWidth())
             }
             Column(Modifier.weight(0.95f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                if (car?.bateria != null) CarPanel(car, Modifier.fillMaxWidth()) else CarAsleepPanel(car, Modifier.fillMaxWidth())
+                casa?.clima?.let { ClimatePanel(it, casa.estancias.orEmpty(), actions, Modifier.fillMaxWidth().weight(1f), compact = true) }
                 casa?.toldo?.let { AwningPanel(it, actions, Modifier.fillMaxWidth()) }
-                MusicPanel(casa?.musica, actions, Modifier.fillMaxWidth().weight(1f))
+                if (casa?.clima == null) Box(Modifier.weight(1f))
                 ComingSoonRow(Modifier.fillMaxWidth())
             }
         }
     }
 }
 
-/** Lo que vendrá, en una sola fila de iconos: luces, lavavajillas, aire y cargador. */
+/** El coche sin datos (dormido o sin conectar): su nombre y logo, y que los datos saldrán cuando despierte. */
+@Composable
+private fun CarAsleepPanel(car: com.lito.planify.dashboard.data.CarStatus?, modifier: Modifier) {
+    Panel(modifier, compact = true) {
+        val logo = carLogo(car)
+        CardHeader(car?.modelo?.takeIf { it.isNotBlank() } ?: "Coche", logo ?: Icons.Outlined.ElectricCar, if (logo != null) TeslaRed else Green, compact = true)
+        Text("Sin datos del coche", style = Type.Body.copy(color = Palette.InkMuted, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(top = 14.dp))
+        Text("Saldrán cuando el coche despierte", style = Type.Small.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+/** Lo que vendrá, en una sola fila de iconos: luces, lavavajillas y cargador (el aire ya tiene su recuadro, «Clima»). */
 @Composable
 private fun ComingSoonRow(modifier: Modifier) {
     Row(
@@ -299,7 +315,7 @@ private fun ComingSoonRow(modifier: Modifier) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text("Pronto", style = Type.Small.copy(color = Palette.InkMuted, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(end = 12.dp))
-        listOf("💡" to "Luces", "🍽️" to "Lavavajillas", "❄️" to "Aire", "🔌" to "Cargador").forEach { (emoji, name) ->
+        listOf("💡" to "Luces", "🍽️" to "Lavavajillas", "🔌" to "Cargador").forEach { (emoji, name) ->
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f).alpha(0.7f)) {
                 Text(emoji, style = Type.Large)
                 Text(name, style = Type.Tiny.copy(color = Palette.InkMuted, fontSize = 15.sp), maxLines = 1)

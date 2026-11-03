@@ -80,7 +80,9 @@ class MainActivity : ComponentActivity() {
             onSetpoint = viewModel::homeSetpoint,
             onPreset = viewModel::homePreset,
             onAwning = viewModel::homeAwning,
-            onMusic = viewModel::homeMusic
+            onMusic = viewModel::homeMusic,
+            onHeaterTemp = viewModel::heaterSetpoint,
+            onHeaterBoost = viewModel::heaterBoost
         )
 
         setContent {
