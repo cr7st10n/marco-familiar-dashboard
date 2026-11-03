@@ -15,7 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -235,7 +238,7 @@ private fun WeekItem(e: Event, past: Boolean, small: Boolean = false, lines: Int
 // --- Abajo: resúmenes ---
 
 @Composable
-private fun Tile(title: String, emoji: String, tint: Color, modifier: Modifier, onClick: (() -> Unit)? = null, background: Color = Palette.Card, content: @Composable ColumnScope.() -> Unit) {
+private fun Tile(title: String, emoji: String, tint: Color, modifier: Modifier, onClick: (() -> Unit)? = null, background: Color = Palette.Card, icon: ImageVector? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier
             .background(background, RoundedCornerShape(28.dp))
@@ -243,7 +246,12 @@ private fun Tile(title: String, emoji: String, tint: Color, modifier: Modifier, 
             .padding(horizontal = 24.dp, vertical = 18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(emoji, style = Type.Body)
+            // Un logo (p. ej. la «T» de Tesla) con sus colores en lugar del emoji, en el mismo hueco (el emoji invisible
+            // debajo) para que la tarjeta quede alineada con las de al lado
+            Box(contentAlignment = Alignment.Center) {
+                Text(emoji, style = Type.Body, modifier = if (icon != null) Modifier.alpha(0f) else Modifier)
+                if (icon != null) Icon(icon, contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(28.dp))
+            }
             Text(title.uppercase(Spanish), style = Type.Label.copy(color = tint, fontSize = 18.sp), modifier = Modifier.padding(start = 10.dp))
         }
         content()
@@ -335,7 +343,7 @@ private fun SecurityTile(security: Security?, now: LocalDateTime, modifier: Modi
 private fun CarTile(state: UiState, modifier: Modifier, onClick: () -> Unit) {
     val car = state.shopping?.coche
     val level = car?.bateria
-    Tile(car?.modelo?.takeIf { it.isNotBlank() } ?: "Coche", "🚗", if (car?.cargando == true) Charging else Palette.Online, modifier, onClick) {
+    Tile(car?.modelo?.takeIf { it.isNotBlank() } ?: "Coche", "🚗", if (car?.cargando == true) Charging else Palette.Online, modifier, onClick, icon = carLogo(car)) {
         if (car == null || level == null) {
             TileLine("Sin datos del coche", Palette.InkMuted, Modifier.padding(top = 8.dp))
             Text("Saldrán cuando el coche despierte", style = Type.Small.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 4.dp))

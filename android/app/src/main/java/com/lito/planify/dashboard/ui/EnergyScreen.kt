@@ -19,6 +19,9 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.ElectricCar
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.lito.planify.dashboard.R
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -233,11 +236,20 @@ private fun BestRow(emoji: String, what: String, window: Triple<LocalDateTime, L
     }
 }
 
+/** Rojo de la marca, para la «T» de Tesla. */
+internal val TeslaRed = Color(0xFFE31937)
+
+/** El logo de la marca si el coche es un Tesla (por su `modelo` en la configuración); si no, null. */
+@Composable
+internal fun carLogo(car: CarStatus?): ImageVector? =
+    if (car?.modelo?.contains("tesla", ignoreCase = true) == true) ImageVector.vectorResource(R.drawable.ic_tesla) else null
+
 /** El coche: batería grande, autonomía, si está enchufado o cargando, kilómetros y la presión de cada rueda. */
 @Composable
 internal fun CarPanel(car: CarStatus, modifier: Modifier) {
     Panel(modifier, compact = true) {
-        CardHeader(car.modelo ?: "Coche eléctrico", Icons.Outlined.ElectricCar, Green, compact = true)
+        val logo = carLogo(car)
+        CardHeader(car.modelo ?: "Coche eléctrico", logo ?: Icons.Outlined.ElectricCar, if (logo != null) TeslaRed else Green, compact = true)
         BatteryPile(car, Modifier.fillMaxWidth().height(120.dp).padding(top = 16.dp))
         Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             CarFact(if (car.cargando) "⚡" else if (car.enchufado) "🔌" else "🅿️", if (car.cargando) "Cargando" else if (car.enchufado) "Enchufado" else "Sin enchufar", Modifier.weight(1f))
