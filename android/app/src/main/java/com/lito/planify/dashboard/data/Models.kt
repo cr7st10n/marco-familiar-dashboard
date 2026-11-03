@@ -107,13 +107,68 @@ data class CarStatus(
     val modelo: String? = null
 )
 
-/** La casa (Home Assistant): termostato, temperatura de las estancias, toldo y la música de los Echo. */
+/**
+ * La casa (Home Assistant): termostato, temperatura de las estancias, toldo, la música de los Echo, las zonas de la
+ * climatización (Airzone) y el termo. `zonas` y `termo` son null mientras no estén en la configuración del servidor.
+ */
 data class HomeStatus(
     val clima: Climate? = null,
     val estancias: List<RoomTemp>? = null,
     val toldo: Awning? = null,
-    val musica: Music? = null
+    val musica: Music? = null,
+    val zonas: List<Zone>? = null,
+    val termo: WaterHeater? = null
 )
+
+/**
+ * Una zona de la climatización (climate.* de HA, p. ej. Airzone), solo para mirar: `modo` es el estado de HA (off, heat,
+ * cool, auto, dry, fan_only) y `accion` lo que hace ahora (heating, cooling, idle, off). Sin `temp`: aún sin datos.
+ */
+data class Zone(
+    val nombre: String,
+    val temp: Double? = null,
+    val consigna: Double? = null,
+    val modo: String? = null,
+    val accion: String? = null,
+    val humedad: Double? = null
+)
+
+/**
+ * El termo eléctrico (water_heater.* de HA, p. ej. Ariston): temperatura del agua y la pedida (`consigna`), `modo` de
+ * HA (IMEMORY, GREEN, BOOST…), si está en Boost, límites del − / + (`min`, `max`) y, si el servidor los tiene, las duchas
+ * que quedan y si está calentando. `disponible` false: configurado pero aún sin datos en HA.
+ */
+data class WaterHeater(
+    val nombre: String? = null,
+    val disponible: Boolean = false,
+    val temp: Double? = null,
+    val consigna: Double? = null,
+    val modo: String? = null,
+    val boost: Boolean = false,
+    val min: Double? = null,
+    val max: Double? = null,
+    val duchas: Double? = null,
+    val calentando: Boolean? = null
+)
+
+/** Seguridad de la casa (compra.json «seguridad»), solo para mirar: el marco no abre ni desarma nada. */
+data class Security(val cerradura: DoorLock? = null, val alarma: Alarm? = null)
+
+/**
+ * Cerradura: `estado` de HA (locked, unlocked, open, jammed, locking…; null si aún no ha informado), batería en %,
+ * si está crítica o cargando y, con sensor de puerta, `puerta` «abierta» o «cerrada».
+ */
+data class DoorLock(
+    val nombre: String? = null,
+    val estado: String? = null,
+    val bateria: Double? = null,
+    val bateria_critica: Boolean? = null,
+    val cargando: Boolean? = null,
+    val puerta: String? = null
+)
+
+/** Alarma: `estado` de HA (disarmed, armed_home, armed_away, armed_night, arming, pending, triggered…). */
+data class Alarm(val nombre: String? = null, val estado: String? = null)
 
 /** Termostato (Somfy u otro, vía HA): `modo` home/away/night/freeze/none (preset de HA); `pila` en %. */
 data class Climate(
@@ -152,7 +207,9 @@ data class ShoppingList(
     val coche: CarStatus? = null,
     val casa: HomeStatus? = null,
     /** Los 3 productos más pedidos («habituales») y si ya están en la lista. */
-    val frecuentes: List<Frequent>? = null
+    val frecuentes: List<Frequent>? = null,
+    /** Cerradura y alarma, solo lectura; null si no están configuradas. */
+    val seguridad: Security? = null
 ) {
     fun all(): List<FamilyList> = listas ?: listOf(FamilyList(SHOPPING_NAME, SHOPPING_COLOR, items))
     fun shopping(): List<ShoppingItem> = all().firstOrNull { it.nombre == SHOPPING_NAME }?.items.orEmpty()
@@ -199,21 +256,30 @@ data class Chores(
     val tareas: List<Chore>? = null,
     val recompensas: List<Reward>? = null,
     /** Canjes pedidos por los niños que esperan a que un padre los apruebe. */
-    val pedidas: List<RewardClaim>? = null
+    val pedidas: List<RewardClaim>? = null,
+    val penalizaciones: List<Penalty>? = null
 ) {
     /** Tareas que alguien todavía tiene por hacer hoy. */
     fun pending(): Int = tareas.orEmpty().count { !it.para.isNullOrEmpty() }
 }
 
-/** Un niño: `estrellas` acumuladas, las ganadas esta semana y las que puede gastar (sin las de canjes pendientes). */
+/**
+ * Un niño: `estrellas` sueltas (fuera de las huchas; negativas si debe), las ganadas esta semana y las que puede gastar
+ * (sin las de canjes pendientes). `huchas`: las que ha metido en la hucha de cada recompensa en TaskMate (por id; ya no
+ * se pueden sacar); `libres`: las sueltas que aún puede guardar.
+ */
 data class Kid(
     val id: String,
     val nombre: String,
     val color: String? = null,
     val estrellas: Int = 0,
     val semana: Int = 0,
-    val disponibles: Int = 0
-)
+    val disponibles: Int = 0,
+    val huchas: Map<String, Int>? = null,
+    val libres: Int = 0
+) {
+    fun saved(reward: String): Int = huchas?.get(reward) ?: 0
+}
 
 /** Recompensa de TaskMate: `costes` por niño (si TaskMate lo ajusta), `para` a quién se ofrece. */
 data class Reward(
@@ -228,6 +294,17 @@ data class Reward(
     fun costFor(kid: String): Int = costes?.get(kid) ?: coste
 }
 
+/** Penalización de TaskMate: quita [estrellas] al niño; la aplica un padre con su PIN. `para`: a quién se puede poner. */
+data class Penalty(
+    val id: String,
+    val nombre: String,
+    val emoji: String? = null,
+    val estrellas: Int = 0,
+    val para: List<String>? = null
+)
+
+data class PenaltyRequest(val penalizacion: String, val nino: String, val pin: String)
+
 /** Un canje pendiente: qué pidió quién y cuándo («20/10 18:30»). */
 data class RewardClaim(
     val id: String,
@@ -241,6 +318,9 @@ data class RewardClaim(
 )
 
 data class RewardClaimRequest(val recompensa: String, val nino: String)
+
+/** Meter una estrella suelta en la hucha de [recompensa] (TaskMate). */
+data class StarSaveRequest(val nino: String, val recompensa: String)
 
 data class ShoppingRemoveRequest(val producto: String)
 

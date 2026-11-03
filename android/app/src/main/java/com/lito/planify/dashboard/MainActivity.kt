@@ -69,6 +69,8 @@ class MainActivity : ComponentActivity() {
             onDone = viewModel::choreDone,
             onUndo = viewModel::choreUndo,
             onClaim = viewModel::rewardClaim,
+            onSave = viewModel::starSave,
+            onPenalize = viewModel::penalize,
             onDecide = viewModel::rewardDecide,
             onClearError = viewModel::clearChoreError,
             onShoppingRemove = viewModel::shoppingRemove,
@@ -78,7 +80,9 @@ class MainActivity : ComponentActivity() {
             onSetpoint = viewModel::homeSetpoint,
             onPreset = viewModel::homePreset,
             onAwning = viewModel::homeAwning,
-            onMusic = viewModel::homeMusic
+            onMusic = viewModel::homeMusic,
+            onHeaterTemp = viewModel::heaterSetpoint,
+            onHeaterBoost = viewModel::heaterBoost
         )
 
         setContent {

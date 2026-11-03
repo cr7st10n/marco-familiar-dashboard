@@ -54,6 +54,8 @@ class CalendarRepositoryTest {
         override suspend fun homeAction(url: String, token: String, body: Map<String, Any>): Response<okhttp3.ResponseBody> = error("no se usa")
         override suspend fun rewardClaim(url: String, token: String, request: com.lito.planify.dashboard.data.RewardClaimRequest): Response<Chores> = error("no se usa")
         override suspend fun rewardDecision(url: String, token: String, request: com.lito.planify.dashboard.data.RewardDecisionRequest): Response<Chores> = error("no se usa")
+        override suspend fun starSave(url: String, token: String, request: com.lito.planify.dashboard.data.StarSaveRequest): Response<Chores> = error("no se usa")
+        override suspend fun penalty(url: String, token: String, request: com.lito.planify.dashboard.data.PenaltyRequest): Response<Chores> = error("no se usa")
     }
 
     private val api = FakeApi()

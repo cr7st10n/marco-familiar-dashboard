@@ -5,7 +5,9 @@ import com.lito.planify.dashboard.data.ChoreDoneRequest
 import com.lito.planify.dashboard.data.ChoreUndoRequest
 import com.lito.planify.dashboard.data.Chores
 import com.lito.planify.dashboard.data.RewardClaimRequest
+import com.lito.planify.dashboard.data.PenaltyRequest
 import com.lito.planify.dashboard.data.RewardDecisionRequest
+import com.lito.planify.dashboard.data.StarSaveRequest
 import com.lito.planify.dashboard.data.bodyOrThrow
 import com.lito.planify.dashboard.data.cache.Cached
 import com.lito.planify.dashboard.data.cache.CachedResource
@@ -34,6 +36,11 @@ class ChoresRepository(private val api: Api, cache: DiskCache, private val url: 
         resource.refresh { api.choreUndo(url + "deshacer", token, ChoreUndoRequest(done)).bodyOrThrow() }
             .onFailure { refresh() }
 
+    /** El niño mete una de sus estrellas sueltas en la hucha de [reward]. */
+    suspend fun save(kid: String, reward: String): Result<Chores> =
+        resource.refresh { api.starSave(url + "guardar", token, StarSaveRequest(kid, reward)).bodyOrThrow() }
+            .onFailure { refresh() }
+
     /** El niño pide canjear [reward]; queda pendiente hasta que un padre lo apruebe. */
     suspend fun claim(reward: String, kid: String): Result<Chores> =
         resource.refresh { api.rewardClaim(url + "pedir", token, RewardClaimRequest(reward, kid)).bodyOrThrow() }
@@ -44,6 +51,10 @@ class ChoresRepository(private val api: Api, cache: DiskCache, private val url: 
         resource.refresh {
             api.rewardDecision(url + if (approve) "aprobar" else "rechazar", token, RewardDecisionRequest(claim, pin)).bodyOrThrow()
         }
+
+    /** Un padre penaliza a [kid] con [penalty] y su [pin]; un PIN malo es un HttpError 403. */
+    suspend fun penalize(penalty: String, kid: String, pin: String): Result<Chores> =
+        resource.refresh { api.penalty(url + "penalizar", token, PenaltyRequest(penalty, kid, pin)).bodyOrThrow() }
 
     companion object {
         const val MAX_AGE_MS = 2 * 60_000L

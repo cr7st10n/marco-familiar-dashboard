@@ -8,8 +8,11 @@ del marco. Home Assistant no se expone: solo se permiten estas operaciones, las 
   GET  /                                  → {"fecha", "ninos", "tareas", "recompensas", "pedidas"}
   POST /hecha     {"tarea", "nino"}       → la marca como hecha por ese niño; devuelve el estado nuevo
   POST /deshacer  {"hecha"}               → deshace una de hoy (quita las estrellas); devuelve el estado nuevo
-  POST /pedir     {"recompensa", "nino"}  → el niño pide el canje (queda pendiente) y se avisa en Todoist
+  POST /guardar   {"nino", "recompensa"}  → mete 1 estrella suelta en la hucha de esa recompensa (TaskMate)
+  POST /pedir     {"recompensa", "nino"}  → el niño pide el canje (queda pendiente) y se avisa en Todoist; solo con la
+                                          hucha de esa recompensa llena
   POST /aprobar   {"pedida", "pin"}       → un padre lo aprueba con el PIN (se descuentan las estrellas)
+  POST /penalizar {"penalizacion", "nino", "pin"} → un padre aplica una penalización de TaskMate con el PIN
   POST /rechazar  {"pedida", "pin"}       → un padre lo rechaza con el PIN (no se descuenta nada)
   POST /compra/quitar {"producto"}        → lo marca comprado en Bring! (sigue en «recientes» por si fue un error);
                                             compra_sync.py lo quita de Alexa al minuto
@@ -18,12 +21,19 @@ del marco. Home Assistant no se expone: solo se permiten estas operaciones, las 
   POST /casa/modo     {"modo"}            → uno de «casa.termostato.modos» (p. ej. home / away / night / freeze)
   POST /casa/toldo    {"accion"}          → sacar / recoger / parar (con «invertido», al revés en HA)
   POST /casa/musica   {"accion", "altavoz"} → play / pause / next / previous en un Echo, o «volumen» con "nivel" (0–1)
+  POST /casa/termo    {"grados"}          → temperatura del agua del termo (grados enteros, entre sus límites)
+  POST /casa/termo    {"boost": true|false} → pone el termo en «casa.termo.modo_boost» o lo devuelve a «modo_normal»
+
+Huchas: las de TaskMate (allocate_points_to_pool). Cada niño mete sus estrellas sueltas en la hucha de la recompensa
+que quiere; salen de su saldo en ese momento y ya no se pueden sacar (TaskMate no lo permite): al aprobar el canje con
+la hucha llena, se vacía. Las penalizaciones y los deshacer solo pueden quitar del saldo suelto, así que la familia
+tiene activado «allow_negative_balance»: si no le llega, queda a deber (saldo negativo) y lo paga con las siguientes.
 
 El PIN de padres lo comprueba este servicio, no el marco: 5 fallos seguidos (por defecto) lo bloquean 15 minutos.
 Credenciales por LoadCredential de systemd: ha.token (Home Assistant), marco.token (el del marco) y padres.pin; y la
 configuración, familia.json (o la ruta de FAMILIA_CONFIG). Sin systemd, se buscan en «rutas.base».
 
-De config/familia.json: «home_assistant», «casa» (termostato, toldo, música), «ninos», «otros_colores» y «tareas»
+De config/familia.json: «home_assistant», «casa» (termostato, toldo, música, termo), «ninos», «otros_colores» y «tareas»
 (puerto, intentos y bloqueo del PIN, emojis).
 """
 from __future__ import annotations
@@ -62,6 +72,7 @@ TOLDO = _CASA.get("toldo", {}).get("entidad", "")
 TOLDO_ACCIONES = ({"sacar": "close_cover", "recoger": "open_cover", "parar": "stop_cover"}
                   if _CASA.get("toldo", {}).get("invertido") else
                   {"sacar": "open_cover", "recoger": "close_cover", "parar": "stop_cover"})
+TERMO = _CASA.get("termo", {})
 MUSICA_ACCIONES = {"play": "media_play", "pause": "media_pause", "next": "media_next_track", "previous": "media_previous_track"}
 PIN_FALLOS, PIN_BLOQUEO = int(_TAREAS.get("pin_fallos", 5)), int(_TAREAS.get("pin_bloqueo_min", 15)) * 60
 _pin = {"fallos": 0, "hasta": 0.0}
@@ -76,6 +87,13 @@ EMOJIS = {"mdi:cat": "🐈", "mdi:broom": "🧹", "mdi:dog": "🐕", "mdi:trash-
           "mdi:cards": "🃏", "mdi:movie-open": "🍿", "mdi:pizza": "🍕", "mdi:gamepad-variant": "🎮", "mdi:ice-cream": "🍦",
           "mdi:gift": "🎁", "mdi:soccer": "⚽", "mdi:television": "📺", "mdi:candy": "🍬",
           "mdi:desk": "📚",
+          "mdi:shower-head": "🚿", "mdi:shower": "🚿", "mdi:bag-personal": "🎒", "mdi:bag-personal-outline": "🎒",
+          "mdi:backpack": "🎒", "mdi:chef-hat": "🍳", "mdi:food": "🍔", "mdi:food-apple": "🍎",
+          "mdi:toothbrush": "🪥", "mdi:hanger": "👕", "mdi:bicycle": "🚲", "mdi:bike": "🚲", "mdi:music": "🎵",
+          "mdi:swim": "🏊", "mdi:basketball": "🏀", "mdi:cake": "🍰", "mdi:cookie": "🍪", "mdi:popcorn": "🍿",
+          "mdi:alert-circle-outline": "⚠️", "mdi:alert-circle": "⚠️", "mdi:alert": "⚠️", "mdi:thumb-down": "👎",
+          "mdi:emoticon-angry": "😠", "mdi:emoticon-sad": "😢", "mdi:cancel": "🚫", "mdi:volume-high": "📢",
+          "mdi:star": "⭐", "mdi:flower": "🌸", "mdi:pencil": "✏️", "mdi:baby-face": "👶", "mdi:account-group": "👪",
           **{k: v for k, v in _TAREAS.get("emojis", {}).items() if not k.startswith("_")}}
 
 
@@ -117,9 +135,11 @@ def estado() -> dict:
     for i, c in enumerate(overview.get("children", [])):
         ninos.append({"id": c["id"], "nombre": c["name"],
                       "color": COLORES.get(c["name"], OTROS_COLORES[i % len(OTROS_COLORES)]),
+                      # Saldo suelto (fuera de las huchas); negativo si debe estrellas
                       "estrellas": c.get("points", 0), "semana": c.get("week_points_earned", 0),
                       # Lo que puede gastar: sus estrellas menos lo apartado en canjes pendientes
-                      "disponibles": c.get("spendable_balance", c.get("points", 0))})
+                      "disponibles": c.get("spendable_balance", c.get("points", 0)),
+                      "libres": max(0, c.get("spendable_balance", c.get("points", 0))), "huchas": {}})
     nombres = {n["id"]: n["nombre"] for n in ninos}
     # Una fila por tarea de hoy: para quién está pendiente y quién la ha hecho
     tareas: dict[str, dict] = {}
@@ -139,7 +159,7 @@ def estado() -> dict:
         hora = datetime.fromisoformat(done["completed_at"]).astimezone(TZ).strftime("%H:%M")
         t["hechas"].append({"id": done["completion_id"], "nino": done["child_id"],
                             "nombre": nombres.get(done["child_id"], done.get("child_name", "")), "hora": hora,
-                            "aprobada": bool(done.get("approved"))})
+                            "aprobada": bool(done.get("approved")), "estrellas": done.get("points", 0)})
     orden = [cid for cid in chores if cid in tareas]
     rewards_attrs = attrs("sensor.taskmate_rewards")
     recompensas = [{"id": r["id"], "nombre": nombre(r), "emoji": emoji(r, "🎁"),
@@ -154,8 +174,21 @@ def estado() -> dict:
                         "nombre": nombres.get(p["child_id"], p.get("child_name", "")), "titulo": p.get("reward_name", ""),
                         "emoji": EMOJIS.get(p.get("reward_icon", ""), "🎁"), "coste": p.get("cost", 0),
                         "cuando": hora.strftime("%d/%m %H:%M")})
+    # Huchas de TaskMate: lo que cada niño ha metido en cada recompensa
+    por_id = {n["id"]: n for n in ninos}
+    for a in rewards_attrs.get("pool_allocations", []):
+        n = por_id.get(a.get("child_id"))
+        if n and a.get("allocated_points", 0) > 0:
+            n["huchas"][a["reward_id"]] = a["allocated_points"]
+    penalizaciones = [{"id": p["id"], "nombre": nombre(p), "emoji": emoji(p, "⚠️"), "estrellas": p.get("points", 0),
+                       "para": p.get("assigned_to") or [n["id"] for n in ninos]}
+                      for p in attrs("sensor.taskmate_incentives").get("penalties", [])]
     return {"fecha": board.get("date"), "ninos": ninos, "tareas": [tareas[cid] for cid in orden],
-            "recompensas": recompensas, "pedidas": pedidas}
+            "recompensas": recompensas, "pedidas": pedidas, "penalizaciones": penalizaciones}
+
+
+def coste(r: dict, nino: str) -> int:
+    return int(r["costes"].get(nino, r["coste"]))
 
 
 def avisar(titulo: str, detalle: str = "") -> None:
@@ -275,6 +308,27 @@ class Handler(BaseHTTPRequestHandler):
                 ha("/api/services/media_player/volume_set", {"entity_id": altavoz, "volume_level": round(min(1.0, max(0.0, nivel)), 2)})
             else:
                 return self.reply(400, {"error": "acción no válida"})
+        elif que == "termo":
+            if not TERMO.get("entidad"):
+                return self.reply(404, {"error": "no hay termo"})
+            a = attrs(TERMO["entidad"])
+            if "boost" in body:
+                modo = TERMO.get("modo_boost") if body.get("boost") is True else TERMO.get("modo_normal")
+                if not modo:
+                    return self.reply(404, {"error": "sin modo_boost / modo_normal en la configuración"})
+                if modo not in (a.get("operation_list") or []):
+                    return self.reply(409, {"error": f"el termo no tiene el modo {modo}"})
+                ha("/api/services/water_heater/set_operation_mode", {"entity_id": TERMO["entidad"], "operation_mode": modo})
+            else:
+                try:
+                    grados = float(body.get("grados"))
+                except (TypeError, ValueError):
+                    return self.reply(400, {"error": "grados no válidos"})
+                lo = float(TERMO.get("temp_min", a.get("min_temp", 40)))
+                hi = float(TERMO.get("temp_max", a.get("max_temp", 65)))
+                if not lo <= grados <= hi or grados % 1:
+                    return self.reply(400, {"error": f"temperatura entre {lo:g} y {hi:g}, en grados enteros"})
+                ha("/api/services/water_heater/set_temperature", {"entity_id": TERMO["entidad"], "temperature": grados})
         else:
             return self.reply(404, {"error": "no existe"})
         self.reply(200, {"ok": True})
@@ -331,15 +385,45 @@ class Handler(BaseHTTPRequestHandler):
                 hecha = str(body.get("hecha", ""))
                 if not any(h["id"] == hecha for t in actual["tareas"] for h in t["hechas"]):
                     return self.reply(409, {"error": "no es una tarea hecha hoy", "estado": actual})
+                h, t = next((h, t) for t in actual["tareas"] for h in t["hechas"] if h["id"] == hecha)
+                saldo = next(n["estrellas"] for n in actual["ninos"] if n["id"] == h["nino"])
                 ha("/api/services/taskmate/undo_chore_approval", {"completion_id": hecha})
                 ha("/api/services/taskmate/reject_chore", {"completion_id": hecha, "reason": "Deshecho en el marco"})
-                return self.reply(200, esperar(lambda e: not any(h["id"] == hecha for t in e["tareas"] for h in t["hechas"])))
+                e = esperar(lambda e: not any(x["id"] == hecha for t in e["tareas"] for x in t["hechas"]))
+                # TaskMate, al deshacer, deja el saldo en 0 como mínimo: si la estrella ya estaba en una hucha (o ya
+                # debía), le quita lo que falte para que quede a deber
+                if h.get("aprobada"):
+                    ahora = next((n["estrellas"] for n in e["ninos"] if n["id"] == h["nino"]), None)
+                    falta = ahora - (saldo - int(h.get("estrellas", 0))) if ahora is not None else 0
+                    if falta > 0:
+                        ha("/api/services/taskmate/remove_points",
+                           {"child_id": h["nino"], "points": falta, "reason": f"Deshecho en el marco: {t['nombre']}"})
+                        e = esperar(lambda e: any(n["id"] == h["nino"] and n["estrellas"] < ahora for n in e["ninos"]))
+                return self.reply(200, e)
+            if self.path == "/guardar":
+                rec, nino = str(body.get("recompensa", "")), str(body.get("nino", ""))
+                r = next((r for r in actual["recompensas"] if r["id"] == rec), None)
+                n = next((n for n in actual["ninos"] if n["id"] == nino), None)
+                if r is None or n is None or nino not in r["para"] or not r["disponible"]:
+                    return self.reply(409, {"error": "esa recompensa no es de ese niño", "estado": actual})
+                if n["libres"] < 1:
+                    return self.reply(409, {"error": "no le quedan estrellas por guardar", "estado": actual})
+                antes = n["huchas"].get(rec, 0)
+                if antes >= coste(r, nino):
+                    return self.reply(409, {"error": "esa hucha ya está llena", "estado": actual})
+                try:
+                    ha("/api/services/taskmate/allocate_points_to_pool", {"child_id": nino, "reward_id": rec, "points": 1})
+                except Exception as e:  # noqa: BLE001
+                    return self.reply(409, {"error": mensaje(e), "estado": actual})
+                return self.reply(200, esperar(lambda e: any(x["id"] == nino and x["huchas"].get(rec, 0) > antes for x in e["ninos"])))
             if self.path == "/pedir":
                 rec, nino = str(body.get("recompensa", "")), str(body.get("nino", ""))
                 r = next((r for r in actual["recompensas"] if r["id"] == rec), None)
                 n = next((n for n in actual["ninos"] if n["id"] == nino), None)
                 if r is None or n is None or nino not in r["para"]:
                     return self.reply(409, {"error": "esa recompensa no es de ese niño", "estado": actual})
+                if n["huchas"].get(rec, 0) < coste(r, nino):
+                    return self.reply(409, {"error": "aún no está llena la hucha de esa recompensa", "estado": actual})
                 antes = len(actual["pedidas"])
                 try:
                     ha("/api/services/taskmate/claim_reward", {"reward_id": rec, "child_id": nino})
@@ -348,6 +432,18 @@ class Handler(BaseHTTPRequestHandler):
                 avisar(f"🎁 {n['nombre']} pide «{r['nombre']}» ({r['costes'].get(nino, r['coste'])} ⭐)",
                        "Apruébalo o recházalo en el marco (pestaña Tareas) con el PIN de padres.")
                 return self.reply(200, esperar(lambda e: len(e["pedidas"]) > antes))
+            if self.path == "/penalizar":
+                pen, nino = str(body.get("penalizacion", "")), str(body.get("nino", ""))
+                p = next((p for p in actual["penalizaciones"] if p["id"] == pen), None)
+                n = next((n for n in actual["ninos"] if n["id"] == nino), None)
+                if p is None or n is None or nino not in p["para"]:
+                    return self.reply(409, {"error": "esa penalización no es de ese niño", "estado": actual})
+                motivo = pin_ok(str(body.get("pin", "")))
+                if motivo:
+                    return self.reply(403, {"error": motivo})
+                ha("/api/services/taskmate/apply_penalty", {"penalty_id": pen, "child_id": nino})
+                antes = n["estrellas"]
+                return self.reply(200, esperar(lambda e: any(x["id"] == nino and x["estrellas"] != antes for x in e["ninos"]), 4))
             if self.path in ("/aprobar", "/rechazar"):
                 pedida = str(body.get("pedida", ""))
                 if not any(p["id"] == pedida for p in actual["pedidas"]):
@@ -356,6 +452,7 @@ class Handler(BaseHTTPRequestHandler):
                 if motivo:
                     return self.reply(403, {"error": motivo})
                 if self.path == "/aprobar":
+                    # Con la hucha llena, TaskMate la vacía (las estrellas ya salieron del saldo al guardarlas)
                     ha("/api/services/taskmate/approve_reward", {"claim_id": pedida})
                 else:
                     ha("/api/services/taskmate/reject_reward", {"claim_id": pedida, "reason": "Rechazado en el marco"})

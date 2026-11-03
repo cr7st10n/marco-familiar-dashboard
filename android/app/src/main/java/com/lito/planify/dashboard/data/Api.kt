@@ -60,6 +60,10 @@ interface Api {
     @POST
     suspend fun rewardClaim(@Url url: String, @Header("X-Marco") token: String, @Body request: RewardClaimRequest): Response<Chores>
 
+    /** Guardar una estrella en la hucha de una recompensa: «…/tareas/guardar». */
+    @POST
+    suspend fun starSave(@Url url: String, @Header("X-Marco") token: String, @Body request: StarSaveRequest): Response<Chores>
+
     /** Quitar de la compra (Bring! lo da por comprado): «…/tareas/compra/quitar». */
     @POST
     suspend fun shoppingRemove(@Url url: String, @Header("X-Marco") token: String, @Body request: ShoppingRemoveRequest): Response<okhttp3.ResponseBody>
@@ -71,6 +75,10 @@ interface Api {
     /** Órdenes a la casa (termostato, toldo, música): «…/tareas/casa/<qué>», con sus datos. */
     @POST
     suspend fun homeAction(@Url url: String, @Header("X-Marco") token: String, @Body body: Map<String, @JvmSuppressWildcards Any>): Response<okhttp3.ResponseBody>
+
+    /** Aplicar una penalización con el PIN de padres: «…/tareas/penalizar». */
+    @POST
+    suspend fun penalty(@Url url: String, @Header("X-Marco") token: String, @Body request: PenaltyRequest): Response<Chores>
 
     /** «…/aprobar» o «…/rechazar». */
     @POST

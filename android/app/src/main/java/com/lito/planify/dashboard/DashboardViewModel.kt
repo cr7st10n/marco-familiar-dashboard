@@ -60,6 +60,8 @@ data class UiState(
     val shopping: ShoppingList? = null,
     /** Tareas de los niños (TaskMate); null si no están configuradas. */
     val chores: Chores? = null,
+    /** Horario en que se puede cargar el coche: «Mejores horas» solo recomienda ahí; null, a cualquier hora. */
+    val carCharge: com.lito.planify.dashboard.data.ChargeHours? = null,
     /** Tarea (o hecha, al deshacer) que se está enviando: su botón espera y no se puede volver a pulsar. */
     val choreBusy: String? = null,
     /** Por qué falló lo último que se envió de tareas o recompensas («PIN incorrecto»…); null si fue bien. */
@@ -126,6 +128,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 energy = energyRepository?.energy?.value?.value,
                 shopping = shoppingRepository?.let { it.list.value?.value ?: ShoppingList() },
                 chores = choresRepository?.let { it.chores.value?.value ?: Chores() },
+                carCharge = icsConfig.carCharge,
                 weeks = calendarRepository.weeks.value,
                 location = store.location,
                 schedule = store.schedule,
@@ -235,11 +238,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     /** Deshace una tarea hecha hoy ([done] es el id de la hecha). */
     fun choreUndo(done: String) = sendChore(done) { it.undo(done) }
 
+    /** Un niño mete una estrella en la hucha de [reward]. */
+    fun starSave(kid: String, reward: String) = sendChore(reward) { it.save(kid, reward) }
+
     /** Un niño pide canjear [reward]. */
     fun rewardClaim(reward: String, kid: String) = sendChore(reward) { it.claim(reward, kid) }
 
     /** Un padre aprueba o rechaza el canje [claim] con su [pin]. */
     fun rewardDecide(claim: String, pin: String, approve: Boolean) = sendChore(claim) { it.decide(claim, pin, approve) }
+
+    /** Un padre aplica la penalización [penalty] a [kid] con su [pin]. */
+    fun penalize(penalty: String, kid: String, pin: String) = sendChore(penalty) { it.penalize(penalty, kid, pin) }
 
     fun clearChoreError() = _state.update { it.copy(choreError = null) }
 
@@ -299,6 +308,20 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 sendHome("musica", mapOf("accion" to action, "altavoz" to speaker))
             }
         }
+    }
+
+    /** Temperatura del agua del termo, en grados enteros entre sus límites (si no se saben, 40–65 °C). */
+    fun heaterSetpoint(degrees: Double) {
+        val t = _state.value.shopping?.casa?.termo ?: return
+        val g = Math.round(degrees).toDouble().coerceIn(t.min ?: 40.0, t.max ?: 65.0)
+        updateHome { it.copy(termo = it.termo?.copy(consigna = g)) }
+        sendHome("termo", mapOf("grados" to g))
+    }
+
+    /** Boost del termo: lo pone en el modo Boost o lo devuelve al normal (los dos, de la configuración del servidor). */
+    fun heaterBoost(on: Boolean) {
+        updateHome { it.copy(termo = it.termo?.copy(boost = on)) }
+        sendHome("termo", mapOf("boost" to on))
     }
 
     /** Lo pulsado se ve enseguida: HA tarda unos segundos en confirmarlo y compra.json, hasta un minuto. */

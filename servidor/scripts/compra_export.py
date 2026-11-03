@@ -10,8 +10,10 @@ despliegue/nginx-ejemplo.conf). Solo escribe si algo cambia. Solo lectura de HA.
 - «frecuentes»: los 3 productos más pedidos que aún no están en la lista («rutas.compra_frecuentes», de
   compra_sync.py), sin los de «rutas.compra_ignorar».
 - «casa»: termostato (temperatura, consigna, modo, humedad, pila), temperatura de las estancias (p. ej. sensores de
-  los Echo), toldo (sacado en %; si «invertido», HA lo da al revés) y la música que suena (o la última pausada) en un
-  Echo.
+  los Echo), toldo (sacado en %; si «invertido», HA lo da al revés), la música que suena (o la última pausada) en un
+  Echo, las zonas de la climatización («zonas», p. ej. Airzone) y el termo eléctrico («termo», p. ej. Ariston).
+- «seguridad»: solo lectura, cerradura (estado, batería, si está crítica o cargando y, con sensor, la puerta) y alarma
+  (estado de HA: disarmed, armed_away…), de «seguridad» en la configuración. Lo que falte, null.
 - «listas»: cada lista de «listas_marco» con nombre, color y elementos; las tareas de Todoist con su fecha
   («vence»), ordenadas: primero las que tienen fecha (las más próximas antes) y luego el resto.
 
@@ -67,32 +69,86 @@ def state(entity):
     return json.load(urllib.request.urlopen(req, timeout=20))["state"]
 
 
-coche = None
-try:
-    car_cfg = CFG.get("coche") or {}
-    # Prefijo de las entidades de la integración del coche: sensor.<prefijo>_nivel_de_bateria, etc.
-    car = car_cfg["prefijo_sensores"]
-    num = lambda e: (lambda v: float(v) if v not in ("unknown", "unavailable", "") else None)(state(e))
-    coche = {"modelo": car_cfg.get("modelo") or "",
-             "bateria": num(f"sensor.{car}_nivel_de_bateria"), "autonomia_km": num(f"sensor.{car}_autonomia"),
-             "cargando": state(f"binary_sensor.{car}_cargando") == "on", "enchufado": state(f"binary_sensor.{car}_enchufe") == "on",
-             "informado": state(f"sensor.{car}_ultima_actualizacion")}
-    try:
-        coche["km"] = num(f"sensor.{car}_cuentakilometros")
-        coche["ruedas_bar"] = [round(num(f"sensor.{car}_presion_neumatico_{r}") / 100, 1) for r in
-                               ("delantero_izquierdo", "delantero_derecho", "trasero_izquierdo", "trasero_derecho")]
-        coche["cargar_100"] = state(f"switch.{car}_charge_to_full") == "on"
-        potencia = num(f"sensor.{car}_battery_power")  # W; 0 cuando la carga está en pausa
-        coche["potencia_kw"] = round(abs(potencia) / 1000, 1) if potencia and abs(potencia) >= 100 else None
-    except Exception:
-        pass
-except Exception:
-    coche = None  # sin coche, el resto del fichero sigue igual
-
-
 def full(entity):
     req = urllib.request.Request(f"{HA}/api/states/{entity}", headers={"Authorization": f"Bearer {TOKEN}"})
     return json.load(urllib.request.urlopen(req, timeout=20))
+
+
+RUEDAS =("delantero_izquierdo", "delantero_derecho", "trasero_izquierdo", "trasero_derecho")
+
+
+def entidades_coche(car_cfg):
+    """Entidades del coche en HA. Por defecto, las de la integración original (sensor.<prefijo>_nivel_de_bateria…);
+    «coche.entidades» cambia cualquiera (p. ej. con Tesla Fleet) o la anula con null si el coche no la tiene."""
+    car = car_cfg["prefijo_sensores"]
+    ent = {"bateria": f"sensor.{car}_nivel_de_bateria", "autonomia": f"sensor.{car}_autonomia",
+           "cargando": f"binary_sensor.{car}_cargando", "enchufe": f"binary_sensor.{car}_enchufe",
+           "informado": f"sensor.{car}_ultima_actualizacion", "km": f"sensor.{car}_cuentakilometros",
+           "cargar_100": f"switch.{car}_charge_to_full", "potencia": f"sensor.{car}_battery_power",
+           **{f"rueda_{r}": f"sensor.{car}_presion_neumatico_{r}" for r in RUEDAS}}
+    ent.update({k: v for k, v in (car_cfg.get("entidades") or {}).items() if not k.startswith("_")})
+    return ent
+
+
+def numero(v):
+    return float(v) if v not in (None, "unknown", "unavailable", "") else None
+
+
+# Presión de las ruedas a bar según la unidad de HA: kPa (integración original), psi (Tesla Fleet) o bar
+A_BAR = {"kpa": 0.01, "psi": 0.0689476, "bar": 1.0}
+
+
+def presion_bar(s):
+    v = numero(s["state"])
+    factor = A_BAR.get(str(s["attributes"].get("unit_of_measurement") or "kPa").lower(), 0.01)
+    return round(v * factor, 1)
+
+
+coche = None
+try:
+    car_cfg = CFG.get("coche") or {}
+    ent = entidades_coche(car_cfg)
+    num = lambda k: numero(state(ent[k]))
+    # Imprescindibles: batería, autonomía, cargando y enchufe. «cargando» vale como binary_sensor («on») o como sensor
+    # del estado de carga («charging»/«starting», Tesla Fleet).
+    coche = {"modelo": car_cfg.get("modelo") or "",
+             "bateria": num("bateria"), "autonomia_km": num("autonomia"),
+             "cargando": state(ent["cargando"]) in ("on", "charging", "starting"),
+             "enchufado": state(ent["enchufe"]) == "on", "informado": None}
+    # El resto, cada uno por su lado: lo que el coche no tenga (null en «entidades» o error) no tumba lo demás.
+    if ent.get("informado"):
+        try:
+            coche["informado"] = state(ent["informado"])
+        except Exception:
+            pass
+    if ent.get("km"):
+        try:
+            coche["km"] = num("km")
+        except Exception:
+            pass
+    try:
+        if all(ent.get(f"rueda_{r}") for r in RUEDAS):
+            coche["ruedas_bar"] = [presion_bar(full(ent[f"rueda_{r}"])) for r in RUEDAS]
+    except Exception:
+        pass
+    if ent.get("cargar_100"):
+        try:
+            # Un interruptor («on») o un límite de carga en % (number de Tesla Fleet): al 100 % = cargar hasta el final
+            v = state(ent["cargar_100"])
+            coche["cargar_100"] = v == "on" or (numero(v) or 0) >= 100
+        except Exception:
+            pass
+    if ent.get("potencia"):
+        try:
+            p = full(ent["potencia"])
+            potencia = numero(p["state"])  # 0 cuando la carga está en pausa
+            if potencia is not None and p["attributes"].get("unit_of_measurement") == "kW":
+                potencia *= 1000  # Tesla Fleet da kW; la integración original, W
+            coche["potencia_kw"] = round(abs(potencia) / 1000, 1) if potencia and abs(potencia) >= 100 else None
+        except Exception:
+            pass
+except Exception:
+    coche = None  # sin coche, el resto del fichero sigue igual
 
 
 def num_or_none(v):
@@ -132,6 +188,55 @@ try:
                      "disponible": c["state"] not in ("unavailable", "unknown")}
 except Exception:
     pass
+
+
+def zona(z):
+    """Una zona de la climatización (climate.*, p. ej. de Airzone): temperatura, consigna, modo y qué hace ahora. Si la
+    entidad aún no existe o no responde, solo el nombre (el marco la enseña «sin datos»)."""
+    out = {"nombre": z.get("nombre") or "Zona"}
+    try:
+        c = full(z["entidad"])
+    except Exception:
+        return out
+    if c["state"] in ("unknown", "unavailable"):
+        return out
+    a = c["attributes"]
+    out.update({"temp": num_or_none(a.get("current_temperature")), "consigna": num_or_none(a.get("temperature")),
+                "modo": c["state"], "accion": a.get("hvac_action"), "humedad": num_or_none(a.get("current_humidity"))})
+    return out
+
+
+def termo(t):
+    """El termo eléctrico (water_heater.*, p. ej. Ariston por la integración de HACS): temperatura del agua, la que se
+    pide, modo (y si es el de Boost), límites para el − / + del marco y, si están configurados, las duchas que quedan y
+    si está calentando. Si la entidad aún no existe o no responde, «disponible»: false."""
+    out = {"nombre": t.get("nombre") or "Termo", "disponible": False}
+    try:
+        w = full(t["entidad"])
+    except Exception:
+        return out
+    if w["state"] in ("unknown", "unavailable"):
+        return out
+    a = w["attributes"]
+    modo = a.get("operation_mode") or w["state"]
+    out.update({"disponible": True, "temp": num_or_none(a.get("current_temperature")),
+                "consigna": num_or_none(a.get("temperature")), "modo": modo,
+                "boost": bool(t.get("modo_boost")) and modo == t.get("modo_boost"),
+                "min": num_or_none(t.get("temp_min", a.get("min_temp"))), "max": num_or_none(t.get("temp_max", a.get("max_temp")))})
+    for clave, conv in (("duchas", num_or_none), ("calentando", lambda v: v == "on")):
+        try:
+            v = state(t[clave]) if t.get(clave) else None
+        except Exception:
+            v = None
+        out[clave] = None if v in (None, "unknown", "unavailable") else conv(v)
+    return out
+
+
+# Climatización por zonas y termo: con la configuración puesta, salen aunque HA aún no los tenga (el marco lo dice)
+if CASA.get("zonas"):
+    casa["zonas"] = [zona(z) for z in CASA["zonas"]]
+if CASA.get("termo", {}).get("entidad"):
+    casa["termo"] = termo(CASA["termo"])
 try:
     req = urllib.request.Request(f"{HA}/api/states", headers={"Authorization": f"Bearer {TOKEN}"})
     players = [p for p in json.load(urllib.request.urlopen(req, timeout=20))
@@ -164,8 +269,42 @@ try:
 except Exception:
     pass
 
+
+def seguridad_export(cfg):
+    """Solo lectura: cerradura (estado de HA, batería, puerta) y alarma. Lo que no haya (null en la configuración, la
+    entidad aún no existe o HA no responde) queda en None; sin «seguridad» en la configuración, None entero."""
+    if not cfg:
+        return None
+
+    def leer(entidad, conv=lambda v: v):
+        if not entidad:
+            return None
+        try:
+            v = state(entidad)
+        except Exception:
+            return None
+        return None if v in ("unknown", "unavailable") else conv(v)
+
+    def on(v):
+        return v == "on"
+
+    out = {}
+    c = cfg.get("cerradura")
+    if c and c.get("entidad"):
+        out["cerradura"] = {"nombre": c.get("nombre") or "Puerta", "estado": leer(c["entidad"]),
+                            "bateria": leer(c.get("bateria"), numero), "bateria_critica": leer(c.get("bateria_critica"), on),
+                            "cargando": leer(c.get("cargando"), on),
+                            "puerta": leer(c.get("puerta"), lambda v: "abierta" if v == "on" else "cerrada")}
+    a = cfg.get("alarma")
+    if a and a.get("entidad"):
+        out["alarma"] = {"nombre": a.get("nombre") or "Alarma", "estado": leer(a["entidad"])}
+    return out or None
+
+
+seguridad = seguridad_export(CFG.get("seguridad"))
+
 data = {"items": [{"producto": i["producto"], "detalle": i["detalle"]} for i in compra], "listas": listas, "coche": coche,
-        "casa": casa, "frecuentes": frecuentes}
+        "casa": casa, "frecuentes": frecuentes, "seguridad": seguridad}
 try:
     old = json.load(open(OUT))
     if {k: old.get(k) for k in data} == data:

@@ -65,13 +65,53 @@
       "_nota": "Reproductores de Alexa Media Player que el marco puede ver y manejar: los de «altavoces» si no está vacía; si no, todos los media_player.* que acaben en «sufijo» (Alexa Media Player añade _2 si ya había una entidad con ese nombre).",
       "sufijo": "_2",
       "altavoces": []
+    },
+    "_nota_zonas": "Zonas de la climatización (climate.* de cada zona, p. ej. de la integración Airzone), solo para ver. Si una entidad aún no existe, el marco la enseña «sin datos».",
+    "zonas": [
+      {"entidad": "climate.salon", "nombre": "Salón"},
+      {"entidad": "climate.cocina", "nombre": "Cocina"},
+      {"entidad": "climate.dormitorio", "nombre": "Dormitorio"},
+      {"entidad": "climate.ninos", "nombre": "Niños"}
+    ],
+    "termo": {
+      "_nota": "water_heater.* del termo (p. ej. Ariston Lydos Hybrid con la integración «Ariston NET remotethermo» de HACS). Boost desde el marco: pasa al modo «modo_boost» y vuelve a «modo_normal» (los nombres, de operation_list en HA). temp_min/temp_max: límites del − / + del marco (si no, los del termo). Opcionales: «duchas» (sensor de duchas disponibles) y «calentando» (binary_sensor).",
+      "entidad": "water_heater.termo",
+      "nombre": "Termo",
+      "modo_boost": "BOOST",
+      "modo_normal": "IMEMORY",
+      "temp_min": 40,
+      "temp_max": 65,
+      "duchas": "sensor.termo_duchas",
+      "calentando": "binary_sensor.termo_calentando"
     }
+  },
+
+  "seguridad": {
+    "_nota": "Opcional y SOLO LECTURA (el marco no abre ni desarma nada): la cerradura y la alarma en la pestaña Casa y, si pasa algo (alarma disparada, cerradura atascada o sin echar de noche, batería baja), un aviso en la portada. «entidad» de la cerradura: lock.* (p. ej. Nuki por MQTT con Home Assistant Discovery); «puerta»: binary_sensor del sensor de puerta, o null si no hay; «alarma.entidad»: alarm_control_panel.* (Verisure en España: integración de Securitas Direct por HACS), o null. Quita la sección entera si no tienes nada de esto.",
+    "cerradura": {"nombre": "Puerta de entrada", "entidad": "lock.puerta_entrada", "bateria": "sensor.puerta_entrada_battery", "bateria_critica": "binary_sensor.puerta_entrada_battery_critical", "cargando": "binary_sensor.puerta_entrada_battery_charging", "puerta": null},
+    "alarma": {"nombre": "Alarma", "entidad": null}
   },
 
   "coche": {
     "_nota": "Prefijo de las entidades de la integración del coche en HA (sensor.<prefijo>_nivel_de_bateria, _autonomia, _cuentakilometros, _ultima_actualizacion, _presion_neumatico_<rueda>, binary_sensor.<prefijo>_cargando y _enchufe, switch.<prefijo>_charge_to_full y sensor.<prefijo>_battery_power en W, para la potencia de carga). «modelo» se publica tal cual en compra.json (coche.modelo). Pon \"coche\": null si no hay coche.",
     "modelo": "Eléctrico compacto",
-    "prefijo_sensores": "mi_coche"
+    "prefijo_sensores": "mi_coche",
+    "_nota_horas_carga": "Opcional: horas en que se puede cargar el coche (p. ej. por la potencia contratada), «desde-hasta» en horas (0-8 = de 0:00 a 8:00; 0-24 = todo el día). «Mejores horas» del marco solo recomienda cargar dentro de ellas; sin «horas_carga», a cualquier hora. Para usarlo, renombra «_ejemplo_horas_carga» a «horas_carga» y vuelve a generar dashboard.properties.",
+    "_ejemplo_horas_carga": {"laborables": "0-8", "fin_de_semana": "0-24"},
+    "_nota_entidades": "Si tu integración usa otros nombres, cámbialos en «entidades» (claves: bateria, autonomia, cargando, enchufe, informado, km, cargar_100, potencia, rueda_delantero_izquierdo, rueda_delantero_derecho, rueda_trasero_izquierdo, rueda_trasero_derecho) o anúlalos con null si el coche no los tiene. Solo bateria, autonomia, cargando y enchufe son imprescindibles. «cargando» vale como binary_sensor (on) o como estado de carga (charging/starting); «cargar_100», como interruptor o como límite de carga en %; la potencia (W o kW) y las ruedas (kPa, psi o bar) se convierten según su unidad. Para Tesla Fleet, renombra «_ejemplo_entidades_tesla_fleet» a «entidades» (cuentakilómetros y ruedas vienen desactivados: actívalos en HA).",
+    "_ejemplo_entidades_tesla_fleet": {
+      "autonomia": "sensor.mi_coche_autonomia_de_la_bateria",
+      "cargando": "sensor.mi_coche_carga",
+      "enchufe": "binary_sensor.mi_coche_cable_de_carga",
+      "cargar_100": "number.mi_coche_limite_de_carga",
+      "potencia": "sensor.mi_coche_potencia_del_cargador",
+      "informado": null,
+      "km": "sensor.mi_coche_cuentakilometros",
+      "rueda_delantero_izquierdo": "sensor.mi_coche_presion_del_neumatico_delantero_izquierdo",
+      "rueda_delantero_derecho": "sensor.mi_coche_presion_del_neumatico_delantero_derecho",
+      "rueda_trasero_izquierdo": "sensor.mi_coche_presion_del_neumatico_trasero_izquierdo",
+      "rueda_trasero_derecho": "sensor.mi_coche_presion_del_neumatico_trasero_derecho"
+    }
   },
 
   "_nota_ninos": "Nombre tal cual en TaskMate y color en el marco. A los niños de TaskMate que no estén aquí se les da uno de «otros_colores».",

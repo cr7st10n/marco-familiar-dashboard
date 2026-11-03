@@ -13,6 +13,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.lito.planify.dashboard.data.RewardClaim
+import com.lito.planify.dashboard.data.Kid
+import com.lito.planify.dashboard.data.Penalty
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -89,24 +91,73 @@ private fun FamilyListsScreen(lists: List<FamilyList>, today: LocalDate, state: 
         val (shopping, others) = lists.partition { it.nombre == ShoppingList.SHOPPING_NAME }
         // Canje que se va a aprobar (true) o rechazar con el PIN de padres
         var asking by remember { mutableStateOf<Pair<RewardClaim, Boolean>?>(null) }
+        // Penalización que un padre va a poner (penalización, niño), con el PIN; [punishSent]: ya se mandó el PIN
+        var punishing by remember { mutableStateOf<Pair<Penalty, Kid>?>(null) }
+        var punishSent by remember { mutableStateOf(false) }
+        LaunchedEffect(state.choreBusy) {
+            // Hecha (sin error): se cierra sola. Con error (PIN malo), se queda para repetir
+            if (state.choreBusy == null && punishSent) {
+                punishSent = false
+                if (state.choreError == null) punishing = null
+            }
+        }
+        // Niño que elige en qué hucha guarda sus estrellas
+        var saving by remember { mutableStateOf<String?>(null) }
+        // Tarea recién marcada (tarea, niño): al llegar el estado con ella hecha, se le pregunta dónde guarda la estrella
+        var justDone by remember { mutableStateOf<Pair<String, String>?>(null) }
+        LaunchedEffect(kids, state.choreBusy) {
+            val (chore, kid) = justDone ?: return@LaunchedEffect
+            if (state.choreBusy != null) return@LaunchedEffect
+            justDone = null
+            if (kids.tareas.orEmpty().firstOrNull { it.id == chore }?.hechas.orEmpty().none { it.nino == kid }) return@LaunchedEffect
+            val who = kids.ninos.orEmpty().firstOrNull { it.id == kid } ?: return@LaunchedEffect
+            if (who.libres > 0 && kids.rewardsWithRoom(who).isNotEmpty()) saving = kid
+        }
         Box(Modifier.fillMaxSize()) {
             ScreenPadding {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                     // Tarjetas compactas apiladas: tareas y recompensas de los niños ocupan lo justo; lo que sobra, las de casa
                     Column(Modifier.weight(1.25f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                        ChoresPanel(kids, state.choreBusy, chores.onDone, chores.onUndo, Modifier.fillMaxWidth())
+                        ChoresPanel(
+                            kids, state.choreBusy, { chore, kid -> justDone = chore to kid; chores.onDone(chore, kid) }, chores.onUndo, Modifier.fillMaxWidth(),
+                            onSaveStars = { kid -> chores.onClearError(); saving = kid }
+                        )
                         RewardsPanel(kids, state.choreBusy, chores.onClaim, { claim, approve -> chores.onClearError(); asking = claim to approve }, Modifier.fillMaxWidth())
                         others.forEach { FamilyListPanel(it, today, Modifier.fillMaxWidth().weight(1f), compact = true) }
                     }
-                    Column(Modifier.weight(1f).fillMaxHeight()) {
-                        shopping.forEach { FamilyListPanel(it, today, Modifier.fillMaxSize(), chores.onShoppingRemove, usuals = state.shopping?.frecuentes, onAdd = chores.onShoppingAdd) }
+                    // A la derecha, la compra con lo que sobra y, debajo, las penalizaciones (solo con el PIN de padres)
+                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        shopping.forEach { FamilyListPanel(it, today, Modifier.fillMaxWidth().weight(1f), chores.onShoppingRemove, usuals = state.shopping?.frecuentes, onAdd = chores.onShoppingAdd) }
+                        PenaltiesPanel(kids, state.choreBusy, { penalty, kid -> chores.onClearError(); punishing = penalty to kid }, Modifier.fillMaxWidth())
                     }
                 }
             }
             asking?.let { (claim, approve) ->
                 // Hecho (ya no está pendiente): se cierra solo
                 LaunchedEffect(kids.pedidas) { if (kids.pedidas.orEmpty().none { it.id == claim.id }) asking = null }
-                PinOverlay(claim, approve, busy = state.choreBusy != null, error = state.choreError, onPin = { chores.onDecide(claim.id, it, approve) }) { asking = null }
+                PinOverlay(
+                    "${if (approve) "Aprobar" else "Rechazar"} «${claim.titulo.orEmpty()}» para ${claim.nombre.orEmpty()}",
+                    if (approve) Palette.Online else Palette.Accent, claim.id,
+                    busy = state.choreBusy != null, error = state.choreError, onPin = { chores.onDecide(claim.id, it, approve) }
+                ) { asking = null }
+            }
+            punishing?.let { (penalty, kid) ->
+                PinOverlay(
+                    "${penalty.emoji ?: "⚠️"} «${penalty.nombre}» a ${kid.nombre}: −${penalty.estrellas} ⭐",
+                    Palette.Accent, penalty.id + kid.id,
+                    busy = state.choreBusy != null, error = state.choreError,
+                    onPin = { punishSent = true; chores.onPenalize(penalty.id, kid.id, it) }
+                ) { punishing = null }
+            }
+            saving?.let { kidId ->
+                val kid = kids.ninos.orEmpty().firstOrNull { it.id == kidId }
+                val rewards = kids.recompensas.orEmpty().filter { it.disponible && kidId in it.para.orEmpty() }
+                // Sin estrellas por guardar o sin sitio en ninguna hucha: se cierra solo
+                if (kid == null || kid.libres <= 0 || kids.rewardsWithRoom(kid).isEmpty()) {
+                    LaunchedEffect(Unit) { saving = null }
+                } else {
+                    StarPicker(kid, rewards, busy = state.choreBusy != null, error = state.choreError, onSave = { chores.onSave(kidId, it) }) { saving = null }
+                }
             }
         }
         return
