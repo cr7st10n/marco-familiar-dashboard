@@ -2,11 +2,15 @@
 """Listas de la familia (vía Home Assistant) → compra.json para el marco del salón («rutas.compra_json»).
 
 Lo lanza familia-compra.timer cada minuto; nginx sirve el fichero en una ruta secreta (ver
-despliegue/nginx-ejemplo.conf). Solo escribe si algo cambia. Solo lectura de HA.
+despliegue/nginx-ejemplo.conf). Solo escribe si algo cambia y nunca mientras HA no esté arrancado del todo (se
+queda el último fichero bueno). Solo lectura de HA.
 
 - «items»: la lista de la compra (Bring!), formato antiguo que leen las versiones anteriores de la app.
 - «coche»: modelo (de la configuración), batería, autonomía, si está enchufado o cargando y cuándo informó el coche
-  por última vez; además cuentakilómetros, presión de las ruedas (bar) y si carga hasta el 100 %.
+  por última vez; además cuentakilómetros, presión de las ruedas (bar) y si carga hasta el 100 %. Si el coche duerme
+  y HA no da la batería, los últimos datos buenos con «dormido»: true y «dormido_desde».
+- «moto»: moto eléctrica (de «moto» en la configuración; por defecto la integración de Silence): batería, autonomía,
+  si carga, cuentakilómetros, si tiene la alarma puesta, estado (IDLE…) y cuándo informó. Sin ubicación.
 - «frecuentes»: los 3 productos más pedidos que aún no están en la lista («rutas.compra_frecuentes», de
   compra_sync.py), sin los de «rutas.compra_ignorar».
 - «casa»: termostato (temperatura, consigna, modo, humedad, pila), temperatura de las estancias (p. ej. sensores de
@@ -31,6 +35,20 @@ OUT = familia.ruta("compra_json")
 TOKEN = familia.ha_token()
 BRING = familia.ha().get("compra_bring", "")
 CASA = CFG.get("casa", {})
+
+
+def ha_listo():
+    """HA contesta y ya ha arrancado del todo («RUNNING»). Mientras se reinicia, sus entidades no existen o salen
+    vacías: escribir entonces dejaría el marco sin coche, seguridad ni listas hasta la siguiente descarga."""
+    try:
+        req = urllib.request.Request(f"{HA}/api/config", headers={"Authorization": f"Bearer {TOKEN}"})
+        return json.load(urllib.request.urlopen(req, timeout=10)).get("state") == "RUNNING"
+    except Exception:
+        return False
+
+
+if not ha_listo():
+    raise SystemExit(0)  # el marco sigue con el último compra.json bueno
 
 
 def entidad(v):
@@ -149,6 +167,56 @@ try:
             pass
 except Exception:
     coche = None  # sin coche, el resto del fichero sigue igual
+
+
+# Moto eléctrica: por defecto, las entidades de la integración de Silence (HACS lorenzo-deluca/homeassistant-silence,
+# sensor.silence_*); «moto.entidades» cambia cualquiera o la anula con null. La ubicación no se publica nunca.
+MOTO_ENT = {"bateria": "sensor.silence_batterysoc", "autonomia": "sensor.silence_range",
+            "cargando": "sensor.silence_charging", "km": "sensor.silence_odometer",
+            "alarma": "sensor.silence_alarmactivated", "estado": "sensor.silence_status",
+            "informado": "sensor.silence_lastreporttime"}
+SI = ("1", "on", "true", "charging")
+
+
+def moto_export(cfg):
+    """{modelo, bateria, autonomia_km, cargando, km, alarma, estado, informado}; None sin «moto» o sin batería."""
+    if not cfg:
+        return None
+    ent = {**MOTO_ENT, **{k: v for k, v in (cfg.get("entidades") or {}).items() if not k.startswith("_")}}
+
+    def leer(k, conv=lambda v: v):
+        try:
+            v = state(ent[k]) if ent.get(k) else None
+            return None if v in (None, "", "unknown", "unavailable") else conv(v)
+        except Exception:
+            return None
+
+    m = {"modelo": cfg.get("modelo") or "Moto", "bateria": leer("bateria", float),
+         "autonomia_km": leer("autonomia", float), "cargando": leer("cargando", lambda v: v.lower() in SI),
+         "km": leer("km", float), "alarma": leer("alarma", lambda v: v.lower() in SI),
+         "estado": leer("estado"), "informado": leer("informado")}
+    return m if m["bateria"] is not None else None
+
+
+moto = moto_export(CFG.get("moto"))
+
+
+def anterior():
+    """El compra.json que ya hay publicado ({} si no hay o está roto)."""
+    try:
+        return json.load(open(OUT))
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+# Coche dormido: tras reiniciar HA (o al rato de dormirse), Tesla Fleet deja batería y autonomía en «unknown» hasta que
+# el coche despierta, y nunca se le despierta desde aquí (cuesta dinero). Entonces se publican los últimos datos buenos
+# con «dormido» y desde cuándo, en vez de dejar el marco sin coche.
+if coche and coche.get("bateria") is None:
+    prev = anterior().get("coche") or {}
+    if prev.get("bateria") is not None:
+        coche = {**prev, "dormido": True,
+                 "dormido_desde": prev.get("dormido_desde") or datetime.now(timezone.utc).isoformat(timespec="seconds")}
 
 
 def num_or_none(v):
@@ -304,7 +372,7 @@ def seguridad_export(cfg):
 seguridad = seguridad_export(CFG.get("seguridad"))
 
 data = {"items": [{"producto": i["producto"], "detalle": i["detalle"]} for i in compra], "listas": listas, "coche": coche,
-        "casa": casa, "frecuentes": frecuentes, "seguridad": seguridad}
+        "moto": moto, "casa": casa, "frecuentes": frecuentes, "seguridad": seguridad}
 try:
     old = json.load(open(OUT))
     if {k: old.get(k) for k in data} == data:
