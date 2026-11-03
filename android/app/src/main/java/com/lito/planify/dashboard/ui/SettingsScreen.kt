@@ -63,6 +63,7 @@ import com.lito.planify.dashboard.data.GeoResult
 import com.lito.planify.dashboard.data.Schedule
 import com.lito.planify.dashboard.data.WifiStatus
 import com.lito.planify.dashboard.data.readWifiStatus
+import com.lito.planify.dashboard.power.ScreenSchedule
 import com.lito.planify.dashboard.ui.theme.Palette
 import com.lito.planify.dashboard.ui.theme.Type
 import java.time.LocalTime
@@ -181,18 +182,21 @@ private fun ScheduleSection(schedule: Schedule, onChange: (Schedule) -> Unit) {
     }
 }
 
-/** Encendido y apagado de un tipo de día, en pasos de 15 minutos (siempre encendido < apagado). */
+/**
+ * Encendido y apagado de un tipo de día, en pasos de 15 minutos (siempre encendido < apagado). El apagado puede pasar de
+ * medianoche hasta [ScreenSchedule.LATEST_OFF] (las 03:00): entonces dice «madrugada».
+ */
 @Composable
 private fun WindowRow(label: String, on: Int, off: Int, onChange: (Int, Int) -> Unit) {
     Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(label, style = Type.Body.copy(fontWeight = FontWeight.SemiBold))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Enciende", style = Type.Small, modifier = Modifier.weight(1f))
-            Stepper(on, min = 0, max = off - 15) { onChange(it, off) }
+            Stepper(on, min = 0, max = minOf(off, 24 * 60) - 15) { onChange(it, off) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Apaga", style = Type.Small, modifier = Modifier.weight(1f))
-            Stepper(off, min = on + 15, max = 24 * 60 - 15) { onChange(on, it) }
+            Text(if (off >= 24 * 60) "Apaga (madrugada)" else "Apaga", style = Type.Small, modifier = Modifier.weight(1f))
+            Stepper(off, min = on + 15, max = ScreenSchedule.LATEST_OFF) { onChange(on, it) }
         }
     }
 }

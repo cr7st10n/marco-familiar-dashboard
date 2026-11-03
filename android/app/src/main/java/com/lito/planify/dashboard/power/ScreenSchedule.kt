@@ -27,6 +27,14 @@ import java.time.ZoneId
 object ScreenSchedule {
     const val GRACE_MINUTES = 5L
 
+    /**
+     * Apagado más tardío: las 03:00 de la madrugada siguiente. Los apagados se cuentan en minutos desde la medianoche
+     * del día que enciende, así que pasada la medianoche valen más de 24 h (la 1:30 es 25 × 60 + 30): cada horario manda
+     * sobre su noche (con «Lunes a viernes» hasta la 1:30, el viernes sigue encendida hasta la 1:30 del sábado).
+     */
+    const val LATEST_OFF = 27 * 60
+    private const val DAY = 24 * 60
+
     /** La hora es de fiar si no es anterior a la compilación de la app. */
     fun clockValid() = System.currentTimeMillis() >= BuildConfig.BUILD_TIME
 
@@ -38,7 +46,9 @@ object ScreenSchedule {
         if (!schedule.enabled) return true
         val (on, off) = window(schedule, at.dayOfWeek)
         val minute = at.hour * 60 + at.minute
-        return minute in on until off
+        if (minute in on until off) return true
+        // La noche de ayer puede seguir pasada la medianoche
+        return minute < window(schedule, at.dayOfWeek.minus(1)).second - DAY
     }
 
     /** Fuera de horario y con el reloj nocturno en vez de apagar la pantalla. */
@@ -51,9 +61,9 @@ object ScreenSchedule {
             date.atStartOfDay().plusMinutes(window(schedule, date.dayOfWeek).first.toLong())
         }.filter { it.isAfter(now) }.min()
 
-    /** Siguiente encendido o apagado posterior a [now]. */
+    /** Siguiente encendido o apagado posterior a [now] (desde ayer: su apagado puede ser esta madrugada). */
     fun nextChange(schedule: Schedule, now: LocalDateTime): LocalDateTime =
-        (0L..7L).flatMap { offset ->
+        (-1L..7L).flatMap { offset ->
             val date = now.toLocalDate().plusDays(offset)
             val (on, off) = window(schedule, date.dayOfWeek)
             listOf(date.atStartOfDay().plusMinutes(on.toLong()), date.atStartOfDay().plusMinutes(off.toLong()))
