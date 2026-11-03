@@ -65,6 +65,24 @@
       "_nota": "Reproductores de Alexa Media Player que el marco puede ver y manejar: los de «altavoces» si no está vacía; si no, todos los media_player.* que acaben en «sufijo» (Alexa Media Player añade _2 si ya había una entidad con ese nombre).",
       "sufijo": "_2",
       "altavoces": []
+    },
+    "_nota_zonas": "Zonas de la climatización (climate.* de cada zona, p. ej. de la integración Airzone), solo para ver. Si una entidad aún no existe, el marco la enseña «sin datos».",
+    "zonas": [
+      {"entidad": "climate.salon", "nombre": "Salón"},
+      {"entidad": "climate.cocina", "nombre": "Cocina"},
+      {"entidad": "climate.dormitorio", "nombre": "Dormitorio"},
+      {"entidad": "climate.ninos", "nombre": "Niños"}
+    ],
+    "termo": {
+      "_nota": "water_heater.* del termo (p. ej. Ariston Lydos Hybrid con la integración «Ariston NET remotethermo» de HACS). Boost desde el marco: pasa al modo «modo_boost» y vuelve a «modo_normal» (los nombres, de operation_list en HA). temp_min/temp_max: límites del − / + del marco (si no, los del termo). Opcionales: «duchas» (sensor de duchas disponibles) y «calentando» (binary_sensor).",
+      "entidad": "water_heater.termo",
+      "nombre": "Termo",
+      "modo_boost": "BOOST",
+      "modo_normal": "IMEMORY",
+      "temp_min": 40,
+      "temp_max": 65,
+      "duchas": "sensor.termo_duchas",
+      "calentando": "binary_sensor.termo_calentando"
     }
   },
 

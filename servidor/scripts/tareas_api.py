@@ -21,6 +21,8 @@ del marco. Home Assistant no se expone: solo se permiten estas operaciones, las 
   POST /casa/modo     {"modo"}            → uno de «casa.termostato.modos» (p. ej. home / away / night / freeze)
   POST /casa/toldo    {"accion"}          → sacar / recoger / parar (con «invertido», al revés en HA)
   POST /casa/musica   {"accion", "altavoz"} → play / pause / next / previous en un Echo, o «volumen» con "nivel" (0–1)
+  POST /casa/termo    {"grados"}          → temperatura del agua del termo (grados enteros, entre sus límites)
+  POST /casa/termo    {"boost": true|false} → pone el termo en «casa.termo.modo_boost» o lo devuelve a «modo_normal»
 
 Huchas: las de TaskMate (allocate_points_to_pool). Cada niño mete sus estrellas sueltas en la hucha de la recompensa
 que quiere; salen de su saldo en ese momento y ya no se pueden sacar (TaskMate no lo permite): al aprobar el canje con
@@ -31,7 +33,7 @@ El PIN de padres lo comprueba este servicio, no el marco: 5 fallos seguidos (por
 Credenciales por LoadCredential de systemd: ha.token (Home Assistant), marco.token (el del marco) y padres.pin; y la
 configuración, familia.json (o la ruta de FAMILIA_CONFIG). Sin systemd, se buscan en «rutas.base».
 
-De config/familia.json: «home_assistant», «casa» (termostato, toldo, música), «ninos», «otros_colores» y «tareas»
+De config/familia.json: «home_assistant», «casa» (termostato, toldo, música, termo), «ninos», «otros_colores» y «tareas»
 (puerto, intentos y bloqueo del PIN, emojis).
 """
 from __future__ import annotations
@@ -70,6 +72,7 @@ TOLDO = _CASA.get("toldo", {}).get("entidad", "")
 TOLDO_ACCIONES = ({"sacar": "close_cover", "recoger": "open_cover", "parar": "stop_cover"}
                   if _CASA.get("toldo", {}).get("invertido") else
                   {"sacar": "open_cover", "recoger": "close_cover", "parar": "stop_cover"})
+TERMO = _CASA.get("termo", {})
 MUSICA_ACCIONES = {"play": "media_play", "pause": "media_pause", "next": "media_next_track", "previous": "media_previous_track"}
 PIN_FALLOS, PIN_BLOQUEO = int(_TAREAS.get("pin_fallos", 5)), int(_TAREAS.get("pin_bloqueo_min", 15)) * 60
 _pin = {"fallos": 0, "hasta": 0.0}
@@ -305,6 +308,27 @@ class Handler(BaseHTTPRequestHandler):
                 ha("/api/services/media_player/volume_set", {"entity_id": altavoz, "volume_level": round(min(1.0, max(0.0, nivel)), 2)})
             else:
                 return self.reply(400, {"error": "acción no válida"})
+        elif que == "termo":
+            if not TERMO.get("entidad"):
+                return self.reply(404, {"error": "no hay termo"})
+            a = attrs(TERMO["entidad"])
+            if "boost" in body:
+                modo = TERMO.get("modo_boost") if body.get("boost") is True else TERMO.get("modo_normal")
+                if not modo:
+                    return self.reply(404, {"error": "sin modo_boost / modo_normal en la configuración"})
+                if modo not in (a.get("operation_list") or []):
+                    return self.reply(409, {"error": f"el termo no tiene el modo {modo}"})
+                ha("/api/services/water_heater/set_operation_mode", {"entity_id": TERMO["entidad"], "operation_mode": modo})
+            else:
+                try:
+                    grados = float(body.get("grados"))
+                except (TypeError, ValueError):
+                    return self.reply(400, {"error": "grados no válidos"})
+                lo = float(TERMO.get("temp_min", a.get("min_temp", 40)))
+                hi = float(TERMO.get("temp_max", a.get("max_temp", 65)))
+                if not lo <= grados <= hi or grados % 1:
+                    return self.reply(400, {"error": f"temperatura entre {lo:g} y {hi:g}, en grados enteros"})
+                ha("/api/services/water_heater/set_temperature", {"entity_id": TERMO["entidad"], "temperature": grados})
         else:
             return self.reply(404, {"error": "no existe"})
         self.reply(200, {"ok": True})

@@ -10,8 +10,8 @@ despliegue/nginx-ejemplo.conf). Solo escribe si algo cambia. Solo lectura de HA.
 - «frecuentes»: los 3 productos más pedidos que aún no están en la lista («rutas.compra_frecuentes», de
   compra_sync.py), sin los de «rutas.compra_ignorar».
 - «casa»: termostato (temperatura, consigna, modo, humedad, pila), temperatura de las estancias (p. ej. sensores de
-  los Echo), toldo (sacado en %; si «invertido», HA lo da al revés) y la música que suena (o la última pausada) en un
-  Echo.
+  los Echo), toldo (sacado en %; si «invertido», HA lo da al revés), la música que suena (o la última pausada) en un
+  Echo, las zonas de la climatización («zonas», p. ej. Airzone) y el termo eléctrico («termo», p. ej. Ariston).
 - «seguridad»: solo lectura, cerradura (estado, batería, si está crítica o cargando y, con sensor, la puerta) y alarma
   (estado de HA: disarmed, armed_away…), de «seguridad» en la configuración. Lo que falte, null.
 - «listas»: cada lista de «listas_marco» con nombre, color y elementos; las tareas de Todoist con su fecha
@@ -188,6 +188,55 @@ try:
                      "disponible": c["state"] not in ("unavailable", "unknown")}
 except Exception:
     pass
+
+
+def zona(z):
+    """Una zona de la climatización (climate.*, p. ej. de Airzone): temperatura, consigna, modo y qué hace ahora. Si la
+    entidad aún no existe o no responde, solo el nombre (el marco la enseña «sin datos»)."""
+    out = {"nombre": z.get("nombre") or "Zona"}
+    try:
+        c = full(z["entidad"])
+    except Exception:
+        return out
+    if c["state"] in ("unknown", "unavailable"):
+        return out
+    a = c["attributes"]
+    out.update({"temp": num_or_none(a.get("current_temperature")), "consigna": num_or_none(a.get("temperature")),
+                "modo": c["state"], "accion": a.get("hvac_action"), "humedad": num_or_none(a.get("current_humidity"))})
+    return out
+
+
+def termo(t):
+    """El termo eléctrico (water_heater.*, p. ej. Ariston por la integración de HACS): temperatura del agua, la que se
+    pide, modo (y si es el de Boost), límites para el − / + del marco y, si están configurados, las duchas que quedan y
+    si está calentando. Si la entidad aún no existe o no responde, «disponible»: false."""
+    out = {"nombre": t.get("nombre") or "Termo", "disponible": False}
+    try:
+        w = full(t["entidad"])
+    except Exception:
+        return out
+    if w["state"] in ("unknown", "unavailable"):
+        return out
+    a = w["attributes"]
+    modo = a.get("operation_mode") or w["state"]
+    out.update({"disponible": True, "temp": num_or_none(a.get("current_temperature")),
+                "consigna": num_or_none(a.get("temperature")), "modo": modo,
+                "boost": bool(t.get("modo_boost")) and modo == t.get("modo_boost"),
+                "min": num_or_none(t.get("temp_min", a.get("min_temp"))), "max": num_or_none(t.get("temp_max", a.get("max_temp")))})
+    for clave, conv in (("duchas", num_or_none), ("calentando", lambda v: v == "on")):
+        try:
+            v = state(t[clave]) if t.get(clave) else None
+        except Exception:
+            v = None
+        out[clave] = None if v in (None, "unknown", "unavailable") else conv(v)
+    return out
+
+
+# Climatización por zonas y termo: con la configuración puesta, salen aunque HA aún no los tenga (el marco lo dice)
+if CASA.get("zonas"):
+    casa["zonas"] = [zona(z) for z in CASA["zonas"]]
+if CASA.get("termo", {}).get("entidad"):
+    casa["termo"] = termo(CASA["termo"])
 try:
     req = urllib.request.Request(f"{HA}/api/states", headers={"Authorization": f"Bearer {TOKEN}"})
     players = [p for p in json.load(urllib.request.urlopen(req, timeout=20))
