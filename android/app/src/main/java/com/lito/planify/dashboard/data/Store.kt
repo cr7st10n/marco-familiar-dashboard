@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.core.content.edit
 import com.google.gson.Gson
 
-/** Horario de pantalla en minutos desde medianoche, por tipo de día. */
+/**
+ * Horario de pantalla en minutos desde medianoche, por tipo de día. El apagado puede pasar de 24 h (madrugada del día
+ * siguiente, hasta las 03:00).
+ */
 data class Schedule(
     val enabled: Boolean = false,
     val weekdayOn: Int = 7 * 60,
