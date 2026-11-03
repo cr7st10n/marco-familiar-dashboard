@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.ElectricCar
+import androidx.compose.material.icons.outlined.ElectricMoped
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -34,6 +35,7 @@ import com.lito.planify.dashboard.UiState
 import com.lito.planify.dashboard.data.CarStatus
 import com.lito.planify.dashboard.data.ChargeHours
 import com.lito.planify.dashboard.data.HourPrice
+import com.lito.planify.dashboard.data.Motorbike
 import com.lito.planify.dashboard.ui.theme.Palette
 import com.lito.planify.dashboard.ui.theme.Type
 import java.time.LocalDate
@@ -238,8 +240,21 @@ private fun BestRow(emoji: String, what: String, window: Triple<LocalDateTime, L
 
 /** Rojo de la marca, para la «T» de Tesla. */
 internal val TeslaRed = Color(0xFFE31937)
+internal val SilenceRed = Color(0xFFFF2F2F)
 
 /** El logo de la marca si el coche es un Tesla (por su `modelo` en la configuración); si no, null. */
+/** Logo de la marca de la moto (el anillo rojo de Silence) si se reconoce por su modelo; null si no. */
+@Composable
+internal fun motoLogo(moto: Motorbike?): ImageVector? =
+    if (moto?.modelo?.contains("silence", ignoreCase = true) == true) ImageVector.vectorResource(R.drawable.ic_silence) else null
+
+/** «💤 Dormido desde las 18:46» del coche con los últimos datos guardados; null si está despierto. */
+internal fun CarStatus.asleepText(): String? {
+    if (!dormido) return null
+    val since = dormido_desde?.let { runCatching { java.time.OffsetDateTime.parse(it).atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalTime() }.getOrNull() }
+    return "💤 Dormido" + (since?.let { " desde las ${it.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))}" } ?: "")
+}
+
 @Composable
 internal fun carLogo(car: CarStatus?): ImageVector? =
     if (car?.modelo?.contains("tesla", ignoreCase = true) == true) ImageVector.vectorResource(R.drawable.ic_tesla) else null
@@ -252,7 +267,8 @@ internal fun CarPanel(car: CarStatus, modifier: Modifier) {
         CardHeader(car.modelo ?: "Coche eléctrico", logo ?: Icons.Outlined.ElectricCar, if (logo != null) TeslaRed else Green, compact = true)
         BatteryPile(car, Modifier.fillMaxWidth().height(120.dp).padding(top = 16.dp))
         Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            CarFact(if (car.cargando) "⚡" else if (car.enchufado) "🔌" else "🅿️", if (car.cargando) "Cargando" else if (car.enchufado) "Enchufado" else "Sin enchufar", Modifier.weight(1f))
+            if (car.dormido) CarFact("💤", "Dormido", Modifier.weight(1f))
+            else CarFact(if (car.cargando) "⚡" else if (car.enchufado) "🔌" else "🅿️", if (car.cargando) "Cargando" else if (car.enchufado) "Enchufado" else "Sin enchufar", Modifier.weight(1f))
             car.km?.let { CarFact("🛣️", "${String.format(Spanish, "%,d", it.toLong())} km", Modifier.weight(1f)) }
         }
         car.ruedas_bar?.takeIf { it.size == 4 }?.let { r ->
@@ -270,6 +286,43 @@ internal fun CarPanel(car: CarStatus, modifier: Modifier) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** «Aparcada», «Cargando», «En marcha»… del estado que da la marca de la moto (Silence: IDLE…); null si no lo da. */
+internal fun Motorbike.statusLabel(): Pair<String, String>? {
+    val s = estado?.uppercase().orEmpty()
+    return when {
+        cargando == true || "CHARG" in s -> "⚡" to "Cargando"
+        s.isEmpty() -> null
+        "IDLE" in s || "PARK" in s || "LOCK" in s || "OFF" in s -> "🅿️" to "Aparcada"
+        "MOV" in s || "RID" in s || "DRIV" in s || s == "ON" -> "🛵" to "En marcha"
+        else -> "🛵" to s.lowercase().replaceFirstChar { it.uppercase() }
+    }
+}
+
+/**
+ * Pestaña Casa: la moto eléctrica, solo para mirar. La misma pila que el coche (batería y autonomía; azul si carga) y,
+ * debajo, si está aparcada o cargando, los kilómetros y si tiene la alarma puesta. Sin batería, el aviso.
+ */
+@Composable
+internal fun MotoPanel(moto: Motorbike?, modifier: Modifier) {
+    Panel(modifier, compact = true) {
+        val logo = motoLogo(moto)
+        CardHeader(moto?.modelo?.takeIf { it.isNotBlank() } ?: "Moto", logo ?: Icons.Outlined.ElectricMoped, if (logo != null) SilenceRed else Green, compact = true)
+        if (moto?.bateria == null) {
+            Text("Sin datos de la moto", style = Type.Body.copy(color = Palette.InkMuted, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(top = 14.dp))
+            Text("Saldrán cuando Silence los envíe", style = Type.Small.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 4.dp))
+            return@Panel
+        }
+        BatteryPile(CarStatus(bateria = moto.bateria, autonomia_km = moto.autonomia_km, cargando = moto.cargando == true, enchufado = moto.cargando == true), Modifier.fillMaxWidth().height(100.dp).padding(top = 14.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            moto.statusLabel()?.let { (emoji, text) -> CarFact(emoji, text, Modifier.weight(1f)) }
+            moto.km?.let { CarFact("🛣️", "${String.format(Spanish, "%,d", it.toLong())} km", Modifier.weight(1f)) }
+        }
+        moto.alarma?.let { on ->
+            CarFact(if (on) "🔒" else "🔓", if (on) "Alarma puesta" else "Alarma quitada", Modifier.fillMaxWidth().padding(top = 10.dp))
         }
     }
 }

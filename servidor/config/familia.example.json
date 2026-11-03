@@ -114,6 +114,11 @@
     }
   },
 
+  "moto": {
+    "_nota": "Moto eléctrica, solo para mirar (batería, autonomía, si carga, km, alarma y estado; nunca la ubicación). Por defecto, las entidades de la integración de Silence (HACS lorenzo-deluca/homeassistant-silence: sensor.silence_batterysoc, _range, _charging, _odometer, _alarmactivated, _status, _lastreporttime). Con otra integración, cámbialas en «entidades» (mismas claves: bateria, autonomia, cargando, km, alarma, estado, informado) o anúlalas con null. Pon \"moto\": null si no hay moto.",
+    "modelo": "Silence S01+"
+  },
+
   "_nota_ninos": "Nombre tal cual en TaskMate y color en el marco. A los niños de TaskMate que no estén aquí se les da uno de «otros_colores».",
   "ninos": [
     {"nombre": "Leo", "color": "#1E88E5"},
