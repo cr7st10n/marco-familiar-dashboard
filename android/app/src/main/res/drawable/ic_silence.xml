@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo de Silence: el anillo rojo de su marca (el del final de «silence» en silence.eco), para la moto en Casa y en la portada. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="20.494"
+    android:viewportHeight="20.494">
+    <group android:translateX="-92.51">
+        <path
+            android:fillColor="#FFFF2F2F"
+            android:fillType="evenOdd"
+            android:pathData="M102.757,0a10.247,10.247 0,1 0,0 20.494a10.247,10.247 0,0 0,0 -20.494m7.299,10.247a7.298,7.298 0,0 1,-8.725 7.155a7.299,7.299 0,1 1,8.725 -7.155" />
+    </group>
+</vector>

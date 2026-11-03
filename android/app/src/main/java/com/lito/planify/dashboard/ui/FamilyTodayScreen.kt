@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lito.planify.dashboard.UiState
 import com.lito.planify.dashboard.data.Event
+import com.lito.planify.dashboard.data.Motorbike
 import com.lito.planify.dashboard.data.Security
 import com.lito.planify.dashboard.data.alert
 import com.lito.planify.dashboard.data.emoji
@@ -347,6 +348,7 @@ private fun CarTile(state: UiState, modifier: Modifier, onClick: () -> Unit) {
         if (car == null || level == null) {
             TileLine("Sin datos del coche", Palette.InkMuted, Modifier.padding(top = 8.dp))
             Text("Saldrán cuando el coche despierte", style = Type.Small.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 4.dp))
+            state.shopping?.moto?.let { Box(Modifier.weight(1f)); MotoLine(it) }
             return@Tile
         }
         val now = state.now
@@ -354,13 +356,32 @@ private fun CarTile(state: UiState, modifier: Modifier, onClick: () -> Unit) {
         Row(Modifier.fillMaxWidth().weight(1f).padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             BatteryGauge(level, car, Modifier.width(170.dp).fillMaxHeight().padding(end = 18.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                TileLine(if (car.cargando) "⚡ Cargando" else if (car.enchufado) "🔌 Enchufado" else "🅿️ Sin enchufar", if (car.cargando) Charging else Palette.Ink)
+                // Dormido: «💤 Dormido» y, debajo, «desde las 18:46» (en una línea no cabe)
+                car.asleepText()?.let { text ->
+                    TileLine("💤 Dormido", Palette.InkSoft)
+                    text.substringAfter("Dormido ", "").takeIf { it.isNotEmpty() }?.let { Text(it, style = Type.Small.copy(color = Palette.InkMuted), maxLines = 1) }
+                } ?: TileLine(if (car.cargando) "⚡ Cargando" else if (car.enchufado) "🔌 Enchufado" else "🅿️ Sin enchufar", if (car.cargando) Charging else Palette.Ink)
                 window?.let { (from, to, _) ->
                     val day = when (from.toLocalDate()) { now.toLocalDate() -> "hoy"; now.toLocalDate().plusDays(1) -> "mañana"; else -> from.toLocalDate().shortLabel().lowercase(Spanish) }
                     Text("Cargar $day ${from.format(HourMinute)}–${to.format(HourMinute)}", style = Type.Small.copy(color = Palette.InkSoft), maxLines = 2)
                 }
             }
         }
+        state.shopping?.moto?.let { MotoLine(it) }
+    }
+}
+
+/** La moto en una línea, debajo del coche: «(logo) Moto 30 % · 39 km» (y «· ⚡ cargando» si carga); 🛵 sin logo. */
+@Composable
+private fun MotoLine(moto: Motorbike) {
+    val logo = motoLogo(moto)
+    val text = moto.bateria?.let { b ->
+        listOfNotNull("Moto ${b.roundToInt()} %", moto.autonomia_km?.let { "${it.roundToInt()} km" }, "⚡ cargando".takeIf { moto.cargando == true }).joinToString(" · ")
+    } ?: "Moto: sin datos"
+    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (logo != null) Icon(logo, contentDescription = null, tint = SilenceRed, modifier = Modifier.size(22.dp))
+        else Text("🛵", style = Type.Small)
+        Text(text, style = Type.Small.copy(color = if (moto.cargando == true) Charging else Palette.InkSoft, fontWeight = FontWeight.SemiBold), maxLines = 1, modifier = Modifier.padding(start = 10.dp))
     }
 }
 

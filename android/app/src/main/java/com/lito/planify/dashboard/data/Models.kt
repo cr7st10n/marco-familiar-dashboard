@@ -104,7 +104,10 @@ data class CarStatus(
     /** Potencia a la que está cargando, en kW (null si no carga o no se sabe). */
     val potencia_kw: Double? = null,
     /** Nombre que se enseña del coche; si no viene, «Coche eléctrico». */
-    val modelo: String? = null
+    val modelo: String? = null,
+    /** El coche duerme y HA no da sus datos: lo de arriba son los últimos buenos, guardados desde [dormido_desde]. */
+    val dormido: Boolean = false,
+    val dormido_desde: String? = null
 )
 
 /**
@@ -197,6 +200,21 @@ data class Music(
 )
 
 /**
+ * La moto eléctrica (vía Home Assistant, p. ej. Silence S01+): batería en %, autonomía en km, si carga, cuentakilómetros,
+ * si tiene la alarma puesta, su estado tal cual lo da la marca (IDLE…) y cuándo informó. Nunca la ubicación.
+ */
+data class Motorbike(
+    val modelo: String? = null,
+    val bateria: Double? = null,
+    val autonomia_km: Double? = null,
+    val cargando: Boolean? = null,
+    val km: Double? = null,
+    val alarma: Boolean? = null,
+    val estado: String? = null,
+    val informado: String? = null
+)
+
+/**
  * Listas de la familia (compra.json). `listas`: todas (compra de Bring! y tareas de Todoist «Casa»); los ficheros
  * antiguos solo traen `items` (la compra).
  */
@@ -205,6 +223,8 @@ data class ShoppingList(
     val items: List<ShoppingItem>? = null,
     val listas: List<FamilyList>? = null,
     val coche: CarStatus? = null,
+    /** La moto eléctrica, solo para mirar; null si no hay o no da la batería. */
+    val moto: Motorbike? = null,
     val casa: HomeStatus? = null,
     /** Los 3 productos más pedidos («habituales») y si ya están en la lista. */
     val frecuentes: List<Frequent>? = null,

@@ -263,7 +263,7 @@ internal fun Chip(text: String, selected: Boolean, color: Color, modifier: Modif
 
 /**
  * Casa y Energía en una sola pestaña. A la izquierda la luz (precio de hoy y mejores horas); en el centro la seguridad,
- * el clima (las zonas de Airzone) y el agua caliente (el termo); a la derecha el coche, el termostato y el toldo si los
+ * el clima (las zonas de Airzone) y el agua caliente (el termo); a la derecha el coche, la moto, el termostato y el toldo si los
  * hay, y lo que vendrá, en una línea.
  */
 @Composable
@@ -287,6 +287,7 @@ fun HomeEnergyScreen(state: UiState, actions: HomeCallbacks) {
             }
             Column(Modifier.weight(0.95f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 if (car?.bateria != null) CarPanel(car, Modifier.fillMaxWidth()) else CarAsleepPanel(car, Modifier.fillMaxWidth())
+                state.shopping?.moto?.let { MotoPanel(it, Modifier.fillMaxWidth()) }
                 casa?.clima?.let { ClimatePanel(it, casa.estancias.orEmpty(), actions, Modifier.fillMaxWidth().weight(1f), compact = true) }
                 casa?.toldo?.let { AwningPanel(it, actions, Modifier.fillMaxWidth()) }
                 if (casa?.clima == null) Box(Modifier.weight(1f))
