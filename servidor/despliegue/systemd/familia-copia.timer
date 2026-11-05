@@ -1,0 +1,11 @@
+# Marco familiar: copia de seguridad cada domingo a las 04:00.
+# Persistent=true: si el equipo estaba apagado a esa hora, la hace al encenderse.
+[Unit]
+Description=Familia: copia de seguridad cifrada, cada domingo
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
