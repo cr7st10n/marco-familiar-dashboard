@@ -1,0 +1,19 @@
+# Marco familiar: copia de seguridad cifrada (copia-marco.sh).
+# Necesita la frase de cifrado en /root/copia-marco.pass (permisos 600, dueño root).
+# Copia en /etc/systemd/system/ junto con familia-copia.timer y activa el temporizador:
+#   systemctl enable --now familia-copia.timer
+# Copia a mano en cualquier momento: systemctl start familia-copia.service
+[Unit]
+Description=Familia: copia de seguridad cifrada del marco y de Home Assistant
+After=docker.service
+
+[Service]
+Type=oneshot
+# Ajusta la ruta si el repo no está en /home/familia/marco-familiar-dashboard
+ExecStart=/bin/bash /home/familia/marco-familiar-dashboard/servidor/scripts/copia-marco.sh
+# Opcional: cambiar destino, semanas que se guardan o dueño de las copias
+#Environment=COPIA_DESTINO=/home/familia/copias
+#Environment=COPIA_SEMANAS=8
+#Environment=COPIA_DUENO=familia
+Nice=19
+IOSchedulingClass=idle
