@@ -31,6 +31,7 @@ else
     home/familia/mosquitto.tgz
     home/familia/mosquitto-passwd
     home/familia/.claude/projects
+    home/familia/rescate-hp
   )
 fi
 
