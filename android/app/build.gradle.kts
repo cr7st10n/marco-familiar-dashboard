@@ -19,8 +19,12 @@ fun planifySetting(name: String, env: String): String? =
 // Calendarios iCal de la familia y colores de los turnos (android/dashboard.properties, ignorado por git; lo genera
 // scripts/make_dashboard_props.py). Va entero en BuildConfig, en base64, y la app lo lee con Properties. Sin él, la
 // app usa Planify como siempre.
-val dashboardConfig: String = rootProject.file("dashboard.properties").takeIf { it.isFile }
-    ?.readBytes()?.let { Base64.getEncoder().encodeToString(it) }.orEmpty()
+val dashboardBytes: ByteArray? = rootProject.file("dashboard.properties").takeIf { it.isFile }?.readBytes()
+val dashboardConfig: String = dashboardBytes?.let { Base64.getEncoder().encodeToString(it) }.orEmpty()
+// compra.json y tareas pueden servirse por HTTP dentro de casa (el miniPC en la red local): entonces la release
+// también necesita permitir tráfico sin cifrar.
+val dashboardHttp: Boolean = dashboardBytes?.toString(Charsets.UTF_8)?.lineSequence()
+    ?.any { Regex("""^\s*(compra|tareas)\.url\s*=\s*http://""").containsMatchIn(it) } == true
 
 val releaseBaseUrl = planifySetting("planify.baseUrl", "PLANIFY_BASE_URL")
 val debugBaseUrl = planifySetting("planify.debugBaseUrl", "PLANIFY_DEBUG_BASE_URL") ?: "http://10.0.2.2:3000/"
@@ -47,7 +51,7 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "BASE_URL", "\"${releaseBaseUrl.orEmpty()}\"")
-            manifestPlaceholders["cleartext"] = cleartext(releaseBaseUrl)
+            manifestPlaceholders["cleartext"] = (cleartext(releaseBaseUrl).toBoolean() || dashboardHttp).toString()
             signingConfig = signingConfigs.getByName("debug") // Instalación local por ADB, como la app
         }
         debug {
