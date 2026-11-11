@@ -47,6 +47,9 @@ import kotlin.math.roundToInt
 /** Días que enseña la franja de la semana (hoy incluido). */
 private const val WEEK_DAYS = 7
 
+/** Días de la semana cuando hay algo de la cocina que contar: los otros 2 los ocupa su tarjeta. */
+private const val WEEK_DAYS_WITH_KITCHEN = 5
+
 /**
  * Portada de la familia (calendarios iCal), pensada para verse de lejos:
  * - arriba, un bloque ancho con la hora, la fecha y el tiempo de hoy y de los próximos días, y a la derecha lo
@@ -78,8 +81,10 @@ fun FamilyTodayScreen(state: UiState, onOpen: (Page) -> Unit) {
         }
         // Con seguridad o coche: calendario a media altura y una fila de tarjetas (Seguridad, Coche, Clima) debajo
         val extras = state.shopping?.seguridad != null || state.shopping?.coche != null
+        // Lavadora/secadora/lavavajillas en marcha o recién terminados, o un aviso (sal, puerta abierta): 5 días y la cocina
+        val kitchen = kitchenNews(state.shopping?.cocina, now)
         Row(Modifier.fillMaxWidth().weight(if (extras) 0.29f else 0.53f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            (0 until WEEK_DAYS).forEach { i ->
+            (0 until if (kitchen.isEmpty()) WEEK_DAYS else WEEK_DAYS_WITH_KITCHEN).forEach { i ->
                 val day = today.plusDays(i.toLong())
                 WeekDay(
                     day, today, now,
@@ -90,6 +95,8 @@ fun FamilyTodayScreen(state: UiState, onOpen: (Page) -> Unit) {
                     compact = extras
                 )
             }
+            // Más o menos el ancho de los 2 días que deja libres
+            if (kitchen.isNotEmpty()) KitchenTile(kitchen, Modifier.weight((WEEK_DAYS - WEEK_DAYS_WITH_KITCHEN).toFloat()).fillMaxHeight()) { onOpen(Page.Kitchen) }
         }
         if (extras) Row(Modifier.fillMaxWidth().weight(0.23f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             SecurityTile(state.shopping?.seguridad, now, Modifier.weight(1f).fillMaxHeight()) { onOpen(Page.Home) }
@@ -431,6 +438,28 @@ private fun ClimateTile(state: UiState, modifier: Modifier, onClick: () -> Unit)
             val text = if (!heater.disponible) "🚿 Termo: pendiente de conectar"
             else listOfNotNull("🚿 Termo ${heater.temp.degrees()}", heater.duchas?.let { showers(it) }, if (heater.boost) "⚡ Boost" else null).joinToString(" · ")
             Text(text, style = Type.Small.copy(color = if (heater.disponible) (if (heater.boost) HotWater else Palette.Ink) else Palette.InkMuted, fontWeight = FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** La cocina en la portada: cada aparato en marcha o recién terminado y cada aviso, una línea con su emoji. */
+@Composable
+private fun KitchenTile(news: List<Pair<com.lito.planify.dashboard.data.Appliance, String>>, modifier: Modifier, onClick: () -> Unit) {
+    val alert = news.any { (a, text) -> text in a.avisos.orEmpty() }
+    Tile("Cocina", "🍳", if (alert) Palette.Accent else Palette.Night, modifier, onClick) {
+        Column(Modifier.padding(top = 8.dp).fadingScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            news.forEach { (a, text) ->
+                val warning = text in a.avisos.orEmpty()
+                Column {
+                    Text("${a.emoji()} ${a.nombre}", style = Type.Small.copy(color = Palette.InkSoft, fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        text,
+                        style = Type.Body.copy(color = if (warning) Palette.Accent else Palette.Ink, fontWeight = FontWeight.SemiBold),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }

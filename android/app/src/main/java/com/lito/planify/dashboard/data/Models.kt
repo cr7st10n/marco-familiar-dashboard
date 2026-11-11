@@ -154,6 +154,35 @@ data class WaterHeater(
     val calentando: Boolean? = null
 )
 
+/**
+ * Un electrodoméstico (compra.json «cocina», p. ej. Haier vía hOn), solo para mirar. `tipo`: lavavajillas, secadora,
+ * lavadora, lavasecadora, frigorifico, placa u horno. `disponible` false: configurado pero aún sin datos en HA.
+ * Los de programa: `en_marcha`, `fin` (hora de acabar, ISO), `restante_min`, `fase`, `programa` y, cuando acaban,
+ * `terminado_desde` (hasta que se abre la puerta). Frigorífico: temperaturas; placa: `encendida` y `caliente`.
+ * `avisos`: textos listos para enseñar (falta sal, puerta abierta…).
+ */
+data class Appliance(
+    val id: String = "",
+    val tipo: String = "",
+    val nombre: String = "",
+    val modelo: String? = null,
+    val disponible: Boolean = false,
+    val estado: String? = null,
+    val programa: String? = null,
+    val fase: String? = null,
+    val restante_min: Double? = null,
+    val fin: String? = null,
+    val en_marcha: Boolean = false,
+    val terminado_desde: String? = null,
+    val puerta: Boolean? = null,
+    val avisos: List<String>? = null,
+    val temp_nevera: Double? = null,
+    val temp_congelador: Double? = null,
+    val encendida: Boolean? = null,
+    val caliente: Boolean? = null,
+    val temp: Double? = null
+)
+
 /** Seguridad de la casa (compra.json «seguridad»), solo para mirar: el marco no abre ni desarma nada. */
 data class Security(val cerradura: DoorLock? = null, val alarma: Alarm? = null)
 
@@ -229,7 +258,9 @@ data class ShoppingList(
     /** Los 3 productos más pedidos («habituales») y si ya están en la lista. */
     val frecuentes: List<Frequent>? = null,
     /** Cerradura y alarma, solo lectura; null si no están configuradas. */
-    val seguridad: Security? = null
+    val seguridad: Security? = null,
+    /** Electrodomésticos de la pestaña Cocina, solo lectura; null si no están configurados en el servidor. */
+    val cocina: List<Appliance>? = null
 ) {
     fun all(): List<FamilyList> = listas ?: listOf(FamilyList(SHOPPING_NAME, SHOPPING_COLOR, items))
     fun shopping(): List<ShoppingItem> = all().firstOrNull { it.nombre == SHOPPING_NAME }?.items.orEmpty()

@@ -172,7 +172,7 @@ private fun Tank(level: Float, heating: Boolean, modifier: Modifier) {
 
 /** Lo que aún no está conectado: el aviso en gris y, debajo, qué aparato es. */
 @Composable
-private fun Pending(what: String, device: String) {
+internal fun Pending(what: String, device: String) {
     Text("Pendiente de conectar", style = Type.Body.copy(color = Palette.InkMuted, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(top = 14.dp))
     Text(what, style = Type.Small.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 4.dp))
     Text(device, style = Type.Tiny.copy(color = Palette.InkMuted), modifier = Modifier.padding(top = 8.dp))

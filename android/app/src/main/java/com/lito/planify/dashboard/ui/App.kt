@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Countertops
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Settings
@@ -66,6 +67,7 @@ enum class Page(val label: String, val icon: ImageVector) {
     Energy("Energía", Icons.Outlined.Bolt),
     Home("Casa y energía", Icons.Outlined.Home),
     Tasks("Tareas", Icons.Outlined.Checklist),
+    Kitchen("Cocina", Icons.Outlined.Countertops),
     Settings("Ajustes", Icons.Outlined.Settings)
 }
 
@@ -76,10 +78,14 @@ private val Page.shortLabel: String
         else -> label
     }
 
-/** Casa y energía solo con datos de Home Assistant (calendarios de la familia); el resto, siempre. */
+/**
+ * Casa y energía solo con datos de Home Assistant (calendarios de la familia); Cocina, con los electrodomésticos
+ * configurados en el servidor; el resto, siempre.
+ */
 private fun Page.available(state: UiState) = when (this) {
     Page.Energy -> false // de momento dentro de «Casa y energía»
     Page.Home -> state.shopping?.casa != null || state.energy != null
+    Page.Kitchen -> state.shopping?.cocina != null
     else -> true
 }
 
@@ -166,6 +172,7 @@ fun DashboardApp(
                         // Prueba: Casa y Energía juntas (EnergyScreen y HomeScreen siguen por si se separan)
                         Page.Home -> HomeEnergyScreen(state, home)
                         Page.Tasks -> TasksScreen(state, chores)
+                        Page.Kitchen -> KitchenScreen(state)
                         Page.Settings -> SettingsScreen(state, actions, settings)
                     }
                 }
