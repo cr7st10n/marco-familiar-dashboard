@@ -58,7 +58,11 @@ fun Event.timeLabel(): String = if (all_day) "Todo el día" else at.format(HourM
 fun Event.rangeLabel(): String? = if (all_day) null else listOfNotNull(at.format(HourMinute), end?.format(HourMinute)).joinToString("–")
 
 /** Texto legible sobre un fondo de color: tinta oscura en los claros (los turnos de Shifter son pastel). */
-fun onColor(background: Color): Color = if (background.luminance() > 0.45f) Palette.Ink else Color.White
+/** Letras sobre un color: oscuras (las del modo claro, también en modo noche) sobre colores claros; blancas sobre oscuros. */
+fun onColor(background: Color): Color = if (background.luminance() > 0.45f) InkOnLight else Color.White
+
+/** Tinta del modo claro, para letras sobre fondos de color claros en cualquier modo. */
+internal val InkOnLight = Color(0xFF221D18)
 
 internal val Green = Color(0xFF3BA55C)
 /** Azul «eléctrico» de la batería del coche mientras carga, para que no se confunda con el verde de batería alta. */

@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -114,6 +115,9 @@ fun DashboardApp(
     chores: ChoreCallbacks,
     home: HomeCallbacks = HomeCallbacks()
 ) {
+    // Modo noche: los colores oscuros siguen al ajuste y, en automático, a la hora (state.now cambia cada minuto)
+    val dark = nightTheme(state.themeMode, state.now, state.forecast)
+    SideEffect { Palette.dark = dark }
     var page by remember { mutableStateOf(Page.Today) }
     var lastTouch by remember { mutableLongStateOf(0L) }
     /** Cita abierta en el aviso ([EventOverlay]); se cierra sola al volver a Hoy por inactividad. */

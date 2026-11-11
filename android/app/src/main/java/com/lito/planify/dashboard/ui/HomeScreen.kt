@@ -257,7 +257,7 @@ internal fun Chip(text: String, selected: Boolean, color: Color, modifier: Modif
             .clickable(onClick = onClick)
             .padding(vertical = 14.dp)
     ) {
-        Text(text, style = Type.Small.copy(color = if (selected) Color.White else Palette.Ink, fontWeight = FontWeight.SemiBold), maxLines = 1)
+        Text(text, style = Type.Small.copy(color = if (selected) onColor(color) else Palette.Ink, fontWeight = FontWeight.SemiBold), maxLines = 1)
     }
 }
 

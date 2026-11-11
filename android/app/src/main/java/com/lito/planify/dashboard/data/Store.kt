@@ -21,6 +21,11 @@ data class Schedule(
     val screenOff: Boolean = false
 )
 
+/** Modos de color de la app (Ajustes → Modo noche). */
+const val THEME_LIGHT = "claro"
+const val THEME_AUTO = "auto"
+const val THEME_DARK = "oscuro"
+
 /** Sesión y ajustes del dispositivo (SharedPreferences). Los datos descargados van en DiskCache. */
 class Store(context: Context) {
     private val prefs = context.getSharedPreferences("dashboard", Context.MODE_PRIVATE)
@@ -46,6 +51,11 @@ class Store(context: Context) {
     var brightness: Float?
         get() = prefs.getFloat("brightness", -1f).takeIf { it > 0f }
         set(value) = prefs.edit { putFloat("brightness", value ?: -1f) }
+
+    /** Modo noche (colores oscuros): «claro», «auto» (de la puesta a la salida del sol) u «oscuro». */
+    var themeMode: String
+        get() = prefs.getString("theme_mode", null) ?: THEME_LIGHT
+        set(value) = prefs.edit { putString("theme_mode", value) }
 
     /** Última hora válida (epoch ms), para ReferenceClock. */
     var lastValidTime: Long

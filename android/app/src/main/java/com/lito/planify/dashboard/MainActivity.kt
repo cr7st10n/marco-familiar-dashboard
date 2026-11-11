@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
             onSelectLocation = viewModel::selectLocation,
             onSchedule = viewModel::setSchedule,
             onBrightness = viewModel::setBrightness,
+            onThemeMode = viewModel::setThemeMode,
             onLogout = viewModel::logout
         )
         val chores = ChoreCallbacks(
