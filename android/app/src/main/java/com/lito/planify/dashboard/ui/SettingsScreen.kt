@@ -58,6 +58,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lito.planify.dashboard.data.THEME_AUTO
+import com.lito.planify.dashboard.data.THEME_DARK
+import com.lito.planify.dashboard.data.THEME_LIGHT
 import com.lito.planify.dashboard.UiState
 import com.lito.planify.dashboard.data.GeoResult
 import com.lito.planify.dashboard.data.Schedule
@@ -77,7 +80,8 @@ class SettingsCallbacks(
     val onSelectLocation: (GeoResult) -> Unit,
     val onSchedule: (Schedule) -> Unit,
     val onBrightness: (Float?) -> Unit,
-    val onLogout: () -> Unit
+    val onLogout: () -> Unit,
+    val onThemeMode: (String) -> Unit = {}
 )
 
 /**
@@ -91,6 +95,7 @@ fun SettingsScreen(state: UiState, actions: DashboardActions, callbacks: Setting
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             Panel(Modifier.weight(1f).fillMaxHeight()) {
                 LocationSection(state, callbacks)
+                ThemeSection(state, callbacks.onThemeMode)
             }
             Panel(Modifier.weight(1f).fillMaxHeight()) {
                 ScheduleSection(state.schedule, callbacks.onSchedule)
@@ -115,7 +120,7 @@ fun SettingsScreen(state: UiState, actions: DashboardActions, callbacks: Setting
     }
 }
 
-private val Control = Palette.Background
+private val Control get() = Palette.Background
 private val ButtonGap = 16.dp
 
 @Composable
@@ -167,6 +172,24 @@ private fun LocationSection(state: UiState, callbacks: SettingsCallbacks) {
             }
             Hairline()
         }
+    }
+}
+
+/** Modo noche: claro, automático (de la puesta a la salida del sol) u oscuro; en automático, las horas de hoy. */
+@Composable
+private fun ThemeSection(state: UiState, onChange: (String) -> Unit) {
+    Section("Modo noche") {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            listOf(THEME_LIGHT to "Claro", THEME_AUTO to "Automático", THEME_DARK to "Oscuro").forEach { (mode, label) ->
+                Chip(label, selected = state.themeMode == mode, color = Palette.Ink, modifier = Modifier.weight(1f)) { onChange(mode) }
+            }
+        }
+        val text = when (state.themeMode) {
+            THEME_AUTO -> sunTimes(state.forecast, state.now).let { (rise, set) -> "Oscuro de la puesta a la salida del sol: hoy de ${set.format(HourMinute)} a ${rise.format(HourMinute)}" }
+            THEME_DARK -> "Siempre oscuro"
+            else -> "Siempre claro"
+        }
+        Text(text, style = Type.Small, modifier = Modifier.padding(top = 16.dp))
     }
 }
 

@@ -69,6 +69,8 @@ data class UiState(
     val location: Location? = null,
     val schedule: Schedule = Schedule(),
     val brightness: Float? = null,
+    /** Modo noche: «claro», «auto» u «oscuro» (ver [com.lito.planify.dashboard.data.THEME_AUTO]). */
+    val themeMode: String = com.lito.planify.dashboard.data.THEME_LIGHT,
     /** false si el último intento de sincronizar falló: se muestra lo que hay en caché. */
     val online: Boolean = true,
     /** Hay una red con salida a Internet (sin ella, el login muestra la espera y "Ir a Ajustes"). */
@@ -132,7 +134,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 weeks = calendarRepository.weeks.value,
                 location = store.location,
                 schedule = store.schedule,
-                brightness = store.brightness
+                brightness = store.brightness,
+                themeMode = store.themeMode
             )
         }
     )
@@ -522,6 +525,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         if (!schedule.enabled || schedule.screenOff || !_state.value.clockValid) return false
         _state.update { it.copy(nightUntil = ScreenSchedule.nextOn(schedule, it.now), peekUntil = null) }
         return true
+    }
+
+    fun setThemeMode(mode: String) {
+        store.themeMode = mode
+        _state.update { it.copy(themeMode = mode) }
     }
 
     fun setBrightness(value: Float?) {
