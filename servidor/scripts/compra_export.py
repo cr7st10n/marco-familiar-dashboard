@@ -18,13 +18,18 @@ queda el último fichero bueno). Solo lectura de HA.
   Echo, las zonas de la climatización («zonas», p. ej. Airzone) y el termo eléctrico («termo», p. ej. Ariston).
 - «seguridad»: solo lectura, cerradura (estado, batería, si está crítica o cargando y, con sensor, la puerta) y alarma
   (estado de HA: disarmed, armed_away…), de «seguridad» en la configuración. Lo que falte, null.
+- «cocina»: los electrodomésticos de «cocina.aparatos» (p. ej. Haier con la integración hOn), solo lectura: si están
+  en marcha, cuándo acaban («fin») y lo que queda, fase y programa, puerta, temperaturas del frigorífico, si la placa
+  está encendida o caliente y avisos (sal, abrillantador, puerta del frigorífico). «terminado_desde» marca cuándo acabó
+  un programa (lo deduce de la publicación anterior) hasta que se abre la puerta o pasan «cocina.terminado_horas».
+  Sin datos en HA todavía: «disponible»: false (el marco pone «pendiente de conectar»).
 - «listas»: cada lista de «listas_marco» con nombre, color y elementos; las tareas de Todoist con su fecha
   («vence»), ordenadas: primero las que tienen fecha (las más próximas antes) y luego el resto.
 
 Uso: python3 -I scripts/compra_export.py
 """
 import json, os, sys, tempfile, urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import familia  # noqa: E402
@@ -371,8 +376,90 @@ def seguridad_export(cfg):
 
 seguridad = seguridad_export(CFG.get("seguridad"))
 
+
+# --- Cocina ---------------------------------------------------------------------------------------------------------
+SI_ON = ("on", "true", "1", "open", "opened", "yes")
+LAVADO = ("lavavajillas", "secadora", "lavadora", "lavasecadora")
+
+
+def cocina_export(cfg):
+    """Los electrodomésticos de «cocina.aparatos», solo lectura. Cada uno: id, tipo, nombre, modelo, «disponible» y lo
+    que dé HA según su tipo; los que tienen programa (lavavajillas, secadora…) también «en_marcha», «fin» (hora de
+    acabar, estable aunque HA redondee los minutos) y «terminado_desde». None sin «cocina» en la configuración."""
+    if not cfg or not cfg.get("aparatos"):
+        return None
+    prev = {a.get("id"): a for a in (anterior().get("cocina") or []) if isinstance(a, dict)}
+    ahora = datetime.now(timezone.utc).replace(microsecond=0)
+    horas = float(cfg.get("terminado_horas", 3))
+    out = []
+    for ap in cfg["aparatos"]:
+        if ap.get("id", "").startswith("_"):
+            continue
+        ent = {k: v for k, v in (ap.get("entidades") or {}).items() if v and not k.startswith("_")}
+
+        def crudo(k):
+            try:
+                v = state(ent[k]) if k in ent else None
+            except Exception:
+                return None
+            return None if v in (None, "", "unknown", "unavailable") else v
+
+        def num(k):
+            return num_or_none(crudo(k))
+
+        def si(k):
+            v = crudo(k)
+            return None if v is None else str(v).lower() in SI_ON
+
+        tipo = ap.get("tipo", "")
+        a = {"id": ap.get("id") or tipo, "tipo": tipo, "nombre": ap.get("nombre") or tipo.capitalize(),
+             "modelo": ap.get("modelo") or ""}
+        valores = {"estado": crudo("estado"), "programa": crudo("programa"), "fase": crudo("fase"),
+                   "restante_min": num("restante"), "puerta": si("puerta"),
+                   "temp_nevera": num("temp_nevera"), "temp_congelador": num("temp_congelador"),
+                   "encendida": si("encendida"), "caliente": si("caliente"), "temp": num("temp")}
+        a.update({k: v for k, v in valores.items() if v is not None})
+        a["disponible"] = any(v is not None for v in valores.values())
+        avisos = []
+        if si("sal"):
+            avisos.append("🧂 Falta sal")
+        if si("abrillantador"):
+            avisos.append("💧 Falta abrillantador")
+        if si("puerta_nevera"):
+            avisos.append("🚪 Puerta de la nevera abierta")
+        if si("puerta_congelador"):
+            avisos.append("🚪 Puerta del congelador abierta")
+        if avisos:
+            a["avisos"] = avisos
+        p = prev.get(a["id"]) or {}
+        restante = a.get("restante_min")
+        a["en_marcha"] = bool(restante and restante > 0) or (si("en_marcha") is True)
+        if a["en_marcha"] and restante:
+            fin = ahora + timedelta(minutes=restante)
+            try:  # la de antes si apenas cambia: así compra.json no se reescribe cada minuto
+                pf = datetime.fromisoformat(p["fin"]) if p.get("fin") else None
+            except ValueError:
+                pf = None
+            a["fin"] = (pf if pf and abs((pf - fin).total_seconds()) <= 120 else fin).isoformat()
+        elif tipo in LAVADO and a["disponible"]:
+            # Acaba de terminar (en marcha en la publicación anterior) o ya lo estaba: hasta abrir la puerta o N horas
+            desde = ahora.isoformat() if p.get("en_marcha") else p.get("terminado_desde")
+            try:
+                vigente = desde and ahora - datetime.fromisoformat(desde) < timedelta(hours=horas)
+            except ValueError:
+                vigente = False
+            # Abrir la puerta después de acabar = alguien ya lo ha vaciado
+            if vigente and not (a.get("puerta") and not p.get("en_marcha")):
+                a["terminado_desde"] = desde
+        out.append(a)
+    return out
+
+
+cocina = cocina_export(CFG.get("cocina"))
+
 data = {"items": [{"producto": i["producto"], "detalle": i["detalle"]} for i in compra], "listas": listas, "coche": coche,
-        "moto": moto, "casa": casa, "frecuentes": frecuentes, "seguridad": seguridad}
+        "moto": moto, "casa": casa, "frecuentes": frecuentes, "seguridad": seguridad,
+        "cocina": cocina}
 try:
     old = json.load(open(OUT))
     if {k: old.get(k) for k in data} == data:
