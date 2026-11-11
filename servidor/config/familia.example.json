@@ -196,11 +196,11 @@
     "_nota": "Opcional y SOLO LECTURA: los electrodomésticos de la pestaña Cocina (p. ej. Haier con la integración comunitaria hOn). Cada aparato: «tipo» (lavavajillas, secadora, lavadora, lavasecadora, frigorifico, placa, horno), nombre, modelo y sus entidades de HA; las que aún no existan, null (el marco pone «pendiente de conectar»). Entidades posibles: estado, programa, fase, restante (minutos), en_marcha, puerta, sal, abrillantador, temp_nevera, temp_congelador, puerta_nevera, puerta_congelador, encendida, caliente, temp. En la portada solo salen los de lavado (en marcha, recién terminados o con avisos) y los avisos del frigorífico. «terminado_horas»: cuánto dura el «terminado» si nadie abre la puerta.",
     "terminado_horas": 3,
     "aparatos": [
-      {"id": "lavavajillas", "tipo": "lavavajillas", "nombre": "Lavavajillas", "modelo": "Haier XS 4A4M4BB", "entidades": {"estado": null, "programa": null, "fase": null, "restante": null, "puerta": null, "sal": null, "abrillantador": null}},
-      {"id": "secadora", "tipo": "secadora", "nombre": "Secadora", "modelo": "Haier HD90-A3959", "entidades": {"estado": null, "programa": null, "fase": null, "restante": null, "puerta": null}},
-      {"id": "frigorifico", "tipo": "frigorifico", "nombre": "Frigorífico", "modelo": "Haier HBW7719DT", "entidades": {"temp_nevera": null, "temp_congelador": null, "puerta_nevera": null, "puerta_congelador": null}},
-      {"id": "placa", "tipo": "placa", "nombre": "Placa", "modelo": "Haier HAIH82MTMCF", "entidades": {"encendida": null, "caliente": null}},
-      {"id": "horno", "tipo": "horno", "nombre": "Micro-horno", "modelo": "Haier H4MWID49C6NQB", "entidades": {"estado": null, "programa": null, "restante": null, "temp": null}}
+      {"id": "lavavajillas", "tipo": "lavavajillas", "nombre": "Lavavajillas", "modelo": "Haier (modelo del lavavajillas)", "entidades": {"estado": null, "programa": null, "fase": null, "restante": null, "puerta": null, "sal": null, "abrillantador": null}},
+      {"id": "secadora", "tipo": "secadora", "nombre": "Secadora", "modelo": "Haier (modelo de la secadora)", "entidades": {"estado": null, "programa": null, "fase": null, "restante": null, "puerta": null}},
+      {"id": "frigorifico", "tipo": "frigorifico", "nombre": "Frigorífico", "modelo": "Haier (modelo del frigorífico)", "entidades": {"temp_nevera": null, "temp_congelador": null, "puerta_nevera": null, "puerta_congelador": null}},
+      {"id": "placa", "tipo": "placa", "nombre": "Placa", "modelo": "Haier (modelo de la placa)", "entidades": {"encendida": null, "caliente": null}},
+      {"id": "horno", "tipo": "horno", "nombre": "Micro-horno", "modelo": "Haier (modelo del micro-horno)", "entidades": {"estado": null, "programa": null, "restante": null, "temp": null}}
     ]
   }
 }

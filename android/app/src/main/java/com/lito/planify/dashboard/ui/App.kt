@@ -21,7 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Checklist
-import androidx.compose.material.icons.outlined.Countertops
+import androidx.compose.material.icons.outlined.SoupKitchen
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Settings
@@ -67,7 +67,7 @@ enum class Page(val label: String, val icon: ImageVector) {
     Energy("Energía", Icons.Outlined.Bolt),
     Home("Casa y energía", Icons.Outlined.Home),
     Tasks("Tareas", Icons.Outlined.Checklist),
-    Kitchen("Cocina", Icons.Outlined.Countertops),
+    Kitchen("Cocina", Icons.Outlined.SoupKitchen),
     Settings("Ajustes", Icons.Outlined.Settings)
 }
 
